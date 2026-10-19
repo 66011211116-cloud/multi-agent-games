@@ -1,0 +1,1870 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Swarm Dispatch — เกม Multi-Agent (OptaPlanner + RVO)</title>
+<meta name="description" content="เกมวางแผนและควบคุมหุ่นยนต์หลายตัว ใช้ OptaPlanner-style solver มอบหมายงาน และ RVO simulation หลบหลีกกัน พร้อมเอกสาร RVO Library">
+<style>
+:root{
+  --bg:#0a0f22; --panel:#111936; --panel2:#17214a; --line:#26346b; --txt:#e8ecff; --mut:#93a0d6;
+  --acc:#6ee7ff; --acc2:#a78bfa; --ok:#4ade80; --warn:#fbbf24; --bad:#fb7185;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 "Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif}
+body{background:radial-gradient(1200px 500px at 20% -10%,#1a2760 0,transparent 60%),radial-gradient(900px 500px at 100% 0,#2a1a5e 0,transparent 55%),var(--bg);min-height:100vh}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel2);padding:7px 12px;border-radius:9px;transition:.15s}
+button:hover{border-color:var(--acc);transform:translateY(-1px)}
+button:disabled{opacity:.45;cursor:default;transform:none;border-color:var(--line)}
+button.primary{background:linear-gradient(135deg,#2563eb,#7c3aed);border-color:transparent;font-weight:600}
+button.danger{background:#3b1530;border-color:#6b2146}
+select,input[type=number]{background:#0d1431;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+input[type=range]{width:100%;accent-color:var(--acc)}
+h1,h2,h3{margin:0}
+code,pre{font-family:var(--mono)}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 22px;flex-wrap:wrap}
+.brand{display:flex;gap:12px;align-items:center}
+.logo{font-size:30px;color:var(--acc);filter:drop-shadow(0 0 10px #6ee7ff88)}
+.brand h1{font-size:22px;letter-spacing:.3px}
+.brand p{margin:0;color:var(--mut);font-size:12.5px}
+.hud{display:flex;gap:8px;flex-wrap:wrap}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--mut)}
+.chip b{color:var(--txt)}
+.tabs{display:flex;gap:8px;padding:0 22px 12px;flex-wrap:wrap}
+.tabs button{padding:9px 16px;border-radius:999px;background:var(--panel)}
+.tabs button.on{background:linear-gradient(135deg,#1d4ed8,#6d28d9);border-color:transparent;font-weight:600}
+main{display:grid;grid-template-columns:minmax(0,1fr) 410px;gap:16px;padding:0 22px 40px;align-items:start;max-width:1500px;margin:0 auto}
+.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px}
+#stage{padding:10px;position:sticky;top:10px}
+#cv{width:100%;height:auto;display:block;border-radius:10px;background:#0c1330}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--mut);font-size:12px;padding:8px 4px 0}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.panel{padding:14px;max-height:calc(100vh - 20px);overflow:auto}
+.panel h2{font-size:16px;margin-bottom:2px}
+.panel .sub{color:var(--mut);font-size:12.5px;margin:0 0 10px}
+.sec{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.sec h3{font-size:13px;color:var(--acc);margin-bottom:6px;font-weight:600}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.row label{color:var(--mut);font-size:12.5px}
+.grow{flex:1}
+.score{font:700 24px var(--mono);letter-spacing:.3px;padding:8px 12px;border-radius:12px;background:#0b1130;border:1px solid var(--line);text-align:center}
+.score.good{color:var(--ok)} .score.bad{color:var(--bad)}
+.bar{height:6px;background:#0b1130;border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2));transition:width .1s}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:5px 6px;text-align:left;border-bottom:1px solid #1d2a5a;vertical-align:top}
+th{color:var(--mut);font-weight:600}
+td.n,th.n{text-align:right;font-family:var(--mono)}
+.tag{font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line)}
+.tag.h{color:var(--bad);border-color:#7a2a45}.tag.s{color:var(--warn);border-color:#7a6320}
+.agentchip{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:9px;background:#0d1431;margin:4px 0;font-size:12.5px}
+.agentchip .dot{width:12px;height:12px;border-radius:50%;flex:none}
+.agentchip .t{flex:1;color:var(--mut)}
+.agentchip .t b{color:var(--txt)}
+.over{color:var(--bad)!important}
+#taskWrap{max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+#taskWrap select{padding:2px 4px;font-size:12px}
+#chart{width:100%;height:84px;display:block;background:#0b1130;border-radius:10px;border:1px solid var(--line)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:#0d1431;border:1px solid var(--line);border-radius:10px;padding:7px 8px;text-align:center}
+.stat b{display:block;font:700 18px var(--mono)}
+.stat span{color:var(--mut);font-size:11.5px}
+#log{height:150px;overflow:auto;background:#0b1130;border:1px solid var(--line);border-radius:10px;padding:6px 8px;font:12px/1.5 var(--mono);color:#b9c3f2}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:#0d1431;padding:5px 10px}
+.seg button.on{background:#2547c8}
+details{margin-top:8px;color:var(--mut)} summary{cursor:pointer;color:var(--acc)}
+details p,details li{font-size:12.5px;margin:4px 0}
+.hint{color:var(--mut);font-size:12px}
+
+/* ---- polish: shared ---- */
+.card,.panel{box-shadow:0 12px 40px #0007,0 0 0 1px #ffffff08 inset}
+.panel{background:linear-gradient(180deg,#131c42,#0f1737)}
+#stage{background:linear-gradient(180deg,#131c42,#0e1634)}
+#cv{box-shadow:0 0 0 1px #2c3b7a inset,0 10px 30px #0009}
+.legend span{background:#0d143199;border:1px solid #1d2a5a;border-radius:99px;padding:2px 10px}
+input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:99px;background:#0b1130;outline:none;border:1px solid #1d2a5a}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));border:2px solid #0a0f22;box-shadow:0 0 10px #6ee7ff88;cursor:pointer}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));border:2px solid #0a0f22;box-shadow:0 0 10px #6ee7ff88;cursor:pointer}
+
+/* ---- polish: RVO simulation panel ---- */
+#panelSim h2{background:linear-gradient(90deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent;font-size:18px}
+#btnPlay{padding:12px 14px;font-size:15px;box-shadow:0 6px 22px #4f46e555}
+#btnPlay:hover{box-shadow:0 8px 28px #6d5dfc88}
+.stats .stat{position:relative;overflow:hidden;padding-top:10px;background:linear-gradient(180deg,#111a40,#0d1431)}
+.stats .stat::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--sc,var(--acc));opacity:.9}
+.stats .stat i{font-style:normal;font-size:15px;display:block;line-height:1.1;margin-bottom:2px}
+.stats .stat b{color:var(--sc,var(--txt))}
+.mbar{display:flex;align-items:center;gap:8px;margin:10px 0 2px}
+.mbar .bar{flex:1;height:8px}
+.mbar .bar>i{background:linear-gradient(90deg,#6ee7ff,#4ade80);box-shadow:0 0 10px #4ade8066}
+.mbar b{font:700 12px var(--mono);color:var(--mut);min-width:38px;text-align:right}
+.ag{display:grid;grid-template-columns:auto 1fr auto;gap:3px 10px;align-items:center;padding:8px 10px;border-radius:12px;background:#0d1431;border:1px solid var(--line);border-left:3px solid var(--c);margin:6px 0}
+.ag .em{font-size:20px;line-height:1}
+.ag .nm{font-weight:600;font-size:13px}
+.ag .nm small{color:var(--mut);font-weight:400;margin-left:4px}
+.ag .ph{font-size:12px;color:var(--mut);text-align:right}
+.ag .ph.go{color:var(--acc)} .ag .ph.service{color:var(--warn)} .ag .ph.return{color:#c4b5fd} .ag .ph.done{color:var(--ok)}
+.ag .mini{grid-column:1/-1;height:5px;background:#0b1130;border-radius:9px;overflow:hidden}
+.ag .mini i{display:block;height:100%;background:var(--c);border-radius:9px;transition:width .2s}
+.ag .meta{grid-column:1/-1;font:11px var(--mono);color:#7f8fd0}
+#log div{padding:2px 0;border-bottom:1px dashed #1d2a5a}
+#log .ok{color:#86efac} #log .warn{color:#fcd34d} #log .bad{color:#fda4af}
+#log:empty::before{content:"ยังไม่มีเหตุการณ์ — กด “เริ่มภารกิจ”";color:#5b6aa8}
+
+body[data-tab=docs] #stage, body[data-tab=docs] .panel, body[data-tab=optadocs] #stage, body[data-tab=optadocs] .panel{display:none}
+body:not([data-tab=docs]) #docs{display:none}
+body:not([data-tab=optadocs]) #optadocs{display:none}
+body[data-tab=plan] #panelSim{display:none}
+body[data-tab=sim] #panelPlan{display:none}
+
+#docs,#optadocs{grid-column:1/-1;padding:22px 26px;max-width:1100px;margin:0 auto;width:100%}
+#docs h2,#optadocs h2{font-size:22px;margin:0 0 6px}
+#docs h3,#optadocs h3{font-size:16px;color:var(--acc);margin:26px 0 8px}
+#docs p,#docs li,#optadocs p,#optadocs li{color:#cfd6ff}
+#docs pre,#optadocs pre{background:#0a1030;border:1px solid var(--line);border-radius:12px;padding:12px 14px;overflow:auto;font-size:12.5px;line-height:1.6;color:#cdd6ff}
+#docs code.i,#optadocs code.i{background:#0a1030;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12.5px;color:var(--acc)}
+#docs table td:first-child{font-family:var(--mono);color:var(--acc);white-space:nowrap}
+#optadocs table td:first-child{color:var(--txt);font-weight:600}
+#optadocs table td code{color:var(--acc);font-size:12px}
+#optadocs .tw,#docs .tw{overflow:auto;border:1px solid var(--line);border-radius:12px}
+#optadocs .flow{display:flex;gap:6px;align-items:stretch;flex-wrap:wrap;margin:10px 0}
+#optadocs .flow .bx{flex:1;min-width:130px;background:#0d1431;border:1px solid var(--line);border-radius:12px;padding:9px 10px;font-size:12.5px;color:var(--mut)}
+#optadocs .flow .bx b{display:block;color:var(--txt);margin-bottom:2px}
+#optadocs .flow .bx.hl{border-color:var(--acc);box-shadow:0 0 0 1px #6ee7ff33 inset}
+#optadocs .flow .ar{align-self:center;color:var(--acc);font-size:20px}
+#optadocs .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:900px){#optadocs .two{grid-template-columns:1fr}}
+#optadocs .cap{font-size:12px;color:var(--mut);margin:4px 0 0}
+.phases{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px}
+.pill{font-size:12px;padding:3px 10px;border-radius:99px;border:1px solid var(--line);background:#0d1431;color:var(--mut)}
+.pill.done{border-color:#1f6b45;color:var(--ok)} .pill.run{border-color:var(--acc);color:var(--acc);animation:pulse 1s ease-in-out infinite} .pill.idle{opacity:.6}
+@keyframes pulse{50%{box-shadow:0 0 12px #6ee7ff66}}
+@media (prefers-reduced-motion:reduce){.pill.run{animation:none}}
+#traceLog{height:120px;overflow:auto;background:#0b1130;border:1px solid var(--line);border-radius:10px;padding:6px 8px;font:11px/1.55 var(--mono);color:#b9c3f2;white-space:pre-wrap}
+.linkbtn{background:none;border:0;padding:0;color:var(--acc);text-decoration:underline;cursor:pointer}
+#docs .tw{overflow:auto;border:1px solid var(--line);border-radius:12px}
+.pgwrap{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+#pg{background:#0c1330;border-radius:12px;border:1px solid var(--line);width:420px;max-width:100%;height:auto}
+.note{border-left:3px solid var(--warn);background:#2a2410;padding:8px 12px;border-radius:0 10px 10px 0;color:#f3e7b6}
+
+.modal{position:fixed;inset:0;background:#050814cc;display:flex;align-items:center;justify-content:center;z-index:10;backdrop-filter:blur(4px)}
+.modal[hidden]{display:none}
+.mbox{background:var(--panel);border:1px solid var(--acc2);border-radius:20px;padding:24px 28px;width:min(460px,92vw);text-align:center;box-shadow:0 20px 80px #000a}
+.stars{font-size:46px;letter-spacing:6px;color:var(--warn);text-shadow:0 0 18px #fbbf2466}
+.mbox .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0;text-align:left}
+.mbox .grid div{background:#0d1431;border-radius:10px;padding:8px 10px;color:var(--mut)}
+.mbox .grid b{display:block;color:var(--txt);font:700 17px var(--mono)}
+.mbox .btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+
+@media (max-width:1000px){
+  main{grid-template-columns:1fr}
+  #stage{position:static}
+  .panel{max-height:none}
+}
+
+/* animation polish */
+@keyframes pop{0%{transform:scale(.85);opacity:0}100%{transform:none;opacity:1}}
+@keyframes glow{50%{text-shadow:0 0 30px #fbbf24cc}}
+@keyframes bump{40%{transform:scale(1.3);color:var(--acc)}}
+.mbox{animation:pop .4s cubic-bezier(.2,1.3,.4,1)}
+.stars{animation:glow 1.8s ease-in-out infinite}
+.stat b.bump{animation:bump .45s ease}
+.stat{transition:border-color .2s}
+canvas#cv{border-radius:12px}
+@media (prefers-reduced-motion:reduce){.mbox,.stars,.stat b.bump{animation:none}}
+</style>
+</head>
+<body data-tab="plan">
+<header class="top">
+  <div class="brand">
+    <span class="logo">⬡</span>
+    <div><h1>Swarm Dispatch</h1><p>เกม Multi-Agent · วางแผนงานด้วย OptaPlanner → ให้หุ่นยนต์หลบกันด้วย RVO</p></div>
+  </div>
+  <div class="hud">
+    <div class="chip">ด่าน <b id="hudLevel">1</b></div>
+    <div class="chip">เอเจนต์ <b id="hudAgents">0</b></div>
+    <div class="chip">งาน <b id="hudTasks">0</b></div>
+    <div class="chip">คะแนนสูงสุดด่านนี้ <b id="hudBest">–</b></div>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="plan" class="on">🧠 OptaPlanner</button>
+  <button data-tab="sim">🌀 RVO Simulation</button>
+  <button data-tab="optadocs">📘 OptaPlanner Documentation</button>
+  <button data-tab="docs">📚 RVO Library Documentation</button>
+</nav>
+
+<main>
+  <section id="stage" class="card">
+    <canvas id="cv"></canvas>
+    <div class="legend">
+      <span><i style="background:#94a3b8"></i>งานความสำคัญ 1</span>
+      <span><i style="background:#fbbf24"></i>ความสำคัญ 2</span>
+      <span><i style="background:#fb7185"></i>ความสำคัญ 3</span>
+      <span>⬡ = งานหนัก (ต้องใช้เอเจนต์ที่มีวงแหวนขาว)</span>
+      <span>🏭 ฐานเอเจนต์ทั่วไป</span>
+      <span>🏗️ ฐานเอเจนต์สายหนัก 💪</span>
+      <span>เลขในวงเล็บ = เวลาส่งสูงสุด (วินาที)</span>
+    </div>
+  </section>
+
+  <!-- ============ OPTAPLANNER PANEL ============ -->
+  <aside id="panelPlan" class="panel">
+    <h2>🧠 OptaPlanner — วางแผนมอบหมายงาน</h2>
+    <p class="sub">Constraint solver แบบ OptaPlanner (เขียนใหม่ด้วย JS): ค้นหาแผนที่คะแนน <b>hard</b> = 0 และ <b>soft</b> สูงที่สุด</p>
+
+    <div class="row">
+      <div class="seg" id="lvlSeg"><button id="lvlPrev">◀</button><button disabled id="lvlLbl">ด่าน 1</button><button id="lvlNext">▶</button></div>
+      <button id="btnReseed">🎲 สุ่มแผนที่ใหม่</button>
+    </div>
+
+    <div class="score" id="scoreBox">0hard/0soft</div>
+    <div class="row" style="margin-top:8px"><div class="bar grow"><i id="solveBar"></i></div></div>
+    <div class="hint" id="solveStatus">พร้อม — แผนเริ่มต้นสร้างจาก Construction Heuristic</div>
+
+    <div class="sec">
+      <h3>⚙ ตั้งค่า Solver</h3>
+      <div class="row"><label style="width:92px">อัลกอริทึม</label>
+        <select id="algo" class="grow">
+          <option value="sa">Simulated Annealing</option>
+          <option value="la">Late Acceptance</option>
+          <option value="hc">Hill Climbing (ง่ายสุด)</option>
+        </select></div>
+      <div class="row"><label style="width:92px">เวลาคำนวณ</label><input type="range" id="limit" min="1" max="20" value="5" class="grow"><b id="limitV" style="width:34px;text-align:right">5s</b></div>
+      <div class="row">
+        <button class="primary grow" id="btnSolve">▶ Solve</button>
+        <button id="btnStop" disabled>■ หยุด</button>
+        <button id="btnConstruct" title="ล้างแผนแล้วสร้างใหม่ด้วย Construction Heuristic">↺ เริ่มใหม่</button>
+      </div>
+      <canvas id="chart" width="340" height="84"></canvas>
+      <div class="hint">กราฟ: คะแนนที่ดีที่สุดตามเวลา (สูง = ดีกว่า)</div>
+    </div>
+
+    <div class="sec">
+      <h3>🔬 Solver Trace — ดูว่า solver ทำอะไรอยู่</h3>
+      <div class="phases" id="phases"></div>
+      <div class="hint" id="acceptorInfo" style="margin-bottom:6px"></div>
+      <table><thead><tr><th>Move (OptaPlanner)</th><th class="n">ลอง</th><th class="n">รับ</th><th class="n">ดีสุดใหม่</th></tr></thead><tbody id="moveStats"></tbody></table>
+      <div class="hint" style="margin:8px 0 4px">Log (รูปแบบเดียวกับ log ของ OptaPlanner — แสดงเมื่อพบ best score ใหม่)</div>
+      <div id="traceLog">กด Solve เพื่อดู log</div>
+      <div class="hint" style="margin-top:6px">อ่านโครงสร้าง, โค้ด Java เทียบเคียง และ solverConfig.xml ได้ที่ <button class="linkbtn" id="goOpta">แท็บ OptaPlanner Documentation</button></div>
+    </div>
+
+    <div class="sec">
+      <h3>📋 Score Analysis</h3>
+      <table><thead><tr><th>Constraint</th><th class="n">จำนวน</th><th class="n">คะแนน</th></tr></thead><tbody id="analysis"></tbody></table>
+    </div>
+
+    <div class="sec">
+      <h3>🤖 เส้นทางของเอเจนต์</h3>
+      <div id="routes"></div>
+    </div>
+
+    <div class="sec">
+      <h3>📌 ล็อกงานให้เอเจนต์ (Pinned planning entity)</h3>
+      <div class="hint" style="margin-bottom:6px">เลือกเอเจนต์ให้งานเอง — solver จะไม่ย้ายงานที่ล็อกไว้ไปที่อื่น</div>
+      <div id="taskWrap"><table><thead><tr><th>#</th><th>หนัก</th><th>pri</th><th class="n">เวลา</th><th>มอบให้</th></tr></thead><tbody id="taskBody"></tbody></table></div>
+    </div>
+
+    <details>
+      <summary>ศัพท์ OptaPlanner ที่ใช้ในเกมนี้</summary>
+      <ul>
+        <li><b>Planning entity</b> = งาน (Task) ที่ solver ต้องจัดการ</li>
+        <li><b>Planning variable</b> = งานนี้ไปอยู่เส้นทางของเอเจนต์คนไหน และลำดับที่เท่าไร (chained variable)</li>
+        <li><b>Hard constraint</b> = กฎที่ห้ามผิด: ห้ามบรรทุกเกินความจุ, งานหนักต้องใช้เอเจนต์สายหนัก, ทุกงานต้องมีผู้รับ</li>
+        <li><b>Soft constraint</b> = ยิ่งดียิ่งคะแนนสูง: ระยะทางรวมสั้น, งานทั้งหมดเสร็จเร็ว, ส่งไม่เกินเวลา (งานสำคัญถ่วงน้ำหนักมากกว่า)</li>
+        <li><b>Construction heuristic</b> = สร้างคำตอบแรกด้วยการแทรกงานทีละชิ้นในตำแหน่งที่ดีที่สุด</li>
+        <li><b>Local search</b> = ปรับแผนด้วย move (change, swap, 2-opt, tail swap) แล้วตัดสินว่ารับหรือไม่ตามอัลกอริทึม</li>
+      </ul>
+      <p>หมายเหตุ: เป็นการ implement แนวคิดของ OptaPlanner ใหม่ในเบราว์เซอร์ ไม่ได้ใช้ไลบรารี Java ตัวจริง</p>
+    </details>
+  </aside>
+
+  <!-- ============ RVO SIM PANEL ============ -->
+  <aside id="panelSim" class="panel">
+    <h2>🌀 RVO Simulation — ลงมือทำจริง</h2>
+    <p class="sub">เอเจนต์ทำตามแผนจาก OptaPlanner และหลบกัน/หลบชั้นวางด้วย Reciprocal Velocity Obstacles</p>
+
+    <div class="row">
+      <button class="primary grow" id="btnPlay">▶ เริ่มภารกิจ</button>
+      <button id="btnSimReset">↺ รีเซ็ต</button>
+    </div>
+    <div class="row"><label>ความเร็วเกม</label>
+      <div class="seg" id="speedSeg"><button data-s="1" class="on">×1</button><button data-s="2">×2</button><button data-s="4">×4</button><button data-s="8">×8</button></div>
+    </div>
+
+    <div class="stats" style="margin-top:8px">
+      <div class="stat" style="--sc:#6ee7ff"><i>⏱</i><b id="stTime">0.0</b><span>เวลา (วินาที)</span></div>
+      <div class="stat" style="--sc:#4ade80"><i>📦</i><b id="stDone">0/0</b><span>ส่งแล้ว</span></div>
+      <div class="stat" style="--sc:#fbbf24"><i>⭐</i><b id="stScore">0</b><span>คะแนนภารกิจ</span></div>
+      <div class="stat" style="--sc:#fb923c"><i>⏰</i><b id="stLate">0</b><span>ส่งช้า</span></div>
+      <div class="stat" style="--sc:#fb7185"><i>💥</i><b id="stColl">0</b><span>ชนกัน</span></div>
+      <div class="stat" style="--sc:#a78bfa"><i>🚫</i><b id="stMiss">0</b><span>งานที่พลาด</span></div>
+    </div>
+    <div class="mbar"><div class="bar"><i id="missionBar"></i></div><b id="missionPct">0%</b></div>
+
+    <div class="sec">
+      <h3>🤖 สถานะเอเจนต์</h3>
+      <div id="simAgents"></div>
+    </div>
+
+    <div class="sec">
+      <h3>🎛 พารามิเตอร์ RVO (ปรับสดได้)</h3>
+      <div class="row"><label><input type="checkbox" id="rvoOn" checked> เปิด RVO (ปิดแล้วเอเจนต์จะวิ่งชนกันเอง)</label></div>
+      <div class="row"><label style="width:128px">neighborDist</label><input type="range" id="pND" min="30" max="160" value="70" class="grow"><b id="vND" style="width:44px;text-align:right">70</b></div>
+      <div class="row"><label style="width:128px">timeHorizon</label><input type="range" id="pTH" min="5" max="50" value="25" class="grow"><b id="vTH" style="width:44px;text-align:right">2.5</b></div>
+      <div class="row"><label style="width:128px">timeHorizonObst</label><input type="range" id="pTO" min="3" max="30" value="12" class="grow"><b id="vTO" style="width:44px;text-align:right">1.2</b></div>
+      <div class="row"><label style="width:128px">ตัวคูณความเร็ว</label><input type="range" id="pSP" min="50" max="150" value="100" class="grow"><b id="vSP" style="width:44px;text-align:right">1.0</b></div>
+      <div class="row"><label><input type="checkbox" id="dbg"> แสดง debug (รัศมีเพื่อนบ้าน, เวกเตอร์ความเร็ว)</label></div>
+    </div>
+
+    <div class="sec">
+      <h3>📜 บันทึกเหตุการณ์</h3>
+      <div id="log"></div>
+    </div>
+    <p class="hint">คะแนน: ส่งงาน +100×ความสำคัญ, ตรงเวลา +50, ช้า −4/วินาที (สูงสุด −80), ชนกัน −30, งานที่พลาด −100. 3 ดาว = ไม่พลาดงาน ไม่ช้า ชน ≤ 2 ครั้ง</p>
+  </aside>
+
+
+  <!-- ============ OPTAPLANNER DOCS ============ -->
+  <section id="optadocs" class="card">
+    <h2>📘 OptaPlanner Documentation — ส่วนที่เป็น OptaPlanner ในเกมนี้</h2>
+    <p><b>OptaPlanner</b> คือ constraint solver แบบ open source สำหรับ Java (ปัจจุบันพัฒนาต่อในชื่อ <b>Timefold Solver</b>) ใช้แก้ปัญหา planning/scheduling เช่น จัดเส้นทางรถ จัดตารางเวร จัดตารางสอน เกมนี้ใช้มันเป็นโมเดลของ “สมองวางแผน” ที่แจกงานให้หุ่นยนต์ก่อนที่ RVO จะพาหุ่นยนต์เดินจริง</p>
+    <div class="note"><b>ความตรงไปตรงมา:</b> เกมนี้รันในเบราว์เซอร์ จึง<b>ไม่ได้ใช้ไลบรารี Java ของ OptaPlanner จริง</b> แต่เขียน solver ใหม่ใน JavaScript โดยคง<u>แนวคิด โครงสร้าง และศัพท์</u>ให้ตรงกัน หน้านี้แสดงว่าแต่ละส่วนในเกมตรงกับอะไรใน OptaPlanner จริง และโค้ดที่แสดงด้านล่างบางส่วนดึงมาจากโค้ดที่กำลังรันอยู่จริงในหน้านี้</div>
+
+    <h3>1. ภาพรวม: OptaPlanner ทำงานเป็นขั้นตอนอย่างไร</h3>
+    <div class="flow">
+      <div class="bx"><b>① Problem facts</b>ข้อมูลที่ไม่เปลี่ยน: เอเจนต์ (ความจุ, ความเร็ว, ทักษะ) และแผนที่</div><div class="ar">→</div>
+      <div class="bx"><b>② Planning entities</b>สิ่งที่ solver ตัดสินใจ: งานแต่ละชิ้น (Task)</div><div class="ar">→</div>
+      <div class="bx hl"><b>③ Construction Heuristic</b>สร้างคำตอบแรกอย่างรวดเร็ว (First Fit Decreasing)</div><div class="ar">→</div>
+      <div class="bx hl"><b>④ Local Search</b>ลอง move ซ้ำ ๆ แล้วตัดสินใจรับ/ไม่รับ (SA / LA / HC)</div><div class="ar">→</div>
+      <div class="bx"><b>⑤ Best solution</b>แผนที่ score ดีที่สุด ส่งให้ RVO</div>
+    </div>
+    <p>ตลอดทุกขั้นตอน <b>Score</b> เป็นตัวตัดสินว่าแผนไหนดีกว่า: <code class="i">HardSoftScore</code> = <code class="i">hard</code> (ต้อง 0 จึงใช้งานได้จริง) และ <code class="i">soft</code> (ยิ่งสูง/ใกล้ 0 ยิ่งดี) การเทียบจะดู hard ก่อนเสมอ แล้วค่อยดู soft ในเกมนี้เก็บเป็นตัวเลขเดียว <code class="i">hard×800 + soft</code> เพื่อเปรียบเทียบ (ดู <code class="i">HARD_W</code>)</p>
+
+    <h3>2. ตารางเทียบศัพท์: OptaPlanner จริง ↔ โค้ดในเกม</h3>
+    <div class="tw"><table>
+      <thead><tr><th>แนวคิด</th><th>ใน OptaPlanner (Java)</th><th>ในเกมนี้ (JavaScript)</th></tr></thead>
+      <tbody>
+        <tr><td>Planning solution</td><td><code>@PlanningSolution</code></td><td>วัตถุด่าน <code>L</code> (agents + tasks) กับ <code>routes[agent] = [task…]</code></td></tr>
+        <tr><td>Problem fact</td><td><code>@ProblemFactCollectionProperty</code></td><td><code>L.agents</code> (cap, speed, heavy), ตาราง ระยะทาง <code>L.D</code></td></tr>
+        <tr><td>Planning entity</td><td><code>@PlanningEntity</code></td><td>งาน <code>L.tasks</code> (w, heavy, pri, deadline)</td></tr>
+        <tr><td>Planning variable (chained)</td><td><code>@PlanningVariable(graphType = CHAINED)</code></td><td>ลำดับงานในอาร์เรย์ของเอเจนต์แต่ละคน (<code>routes</code>)</td></tr>
+        <tr><td>Score</td><td><code>HardSoftScore</code></td><td><code>{hard, soft}</code> จาก <code>Solver.evaluate()</code></td></tr>
+        <tr><td>Constraint</td><td><code>ConstraintProvider</code> (Constraint Streams)</td><td>เงื่อนไขที่เขียนตรง ๆ ใน <code>evaluate()</code> (ดูหัวข้อ 4)</td></tr>
+        <tr><td>Construction Heuristic</td><td><code>FIRST_FIT_DECREASING</code></td><td><code>Solver.construct()</code></td></tr>
+        <tr><td>Local Search</td><td><code>&lt;localSearch&gt;</code> + acceptor + forager</td><td><code>Solver.run()</code> (เลือกอัลกอริทึมจาก dropdown)</td></tr>
+        <tr><td>Move selector</td><td>Change / Swap / SubChain / TailChainSwap</td><td><code>Solver._neighbour()</code> (ดูหัวข้อ 6)</td></tr>
+        <tr><td>Pinned entity</td><td><code>@PlanningPin</code></td><td>ตาราง “ล็อกงานให้เอเจนต์” → <code>Solver.pin()</code></td></tr>
+        <tr><td>Score analysis</td><td><code>ScoreExplanation</code> / <code>ScoreAnalysis</code></td><td>ตาราง Score Analysis ในแท็บ OptaPlanner</td></tr>
+        <tr><td>Termination</td><td><code>&lt;secondsSpentLimit&gt;</code></td><td>แถบเลื่อน “เวลาคำนวณ”</td></tr>
+      </tbody></table></div>
+
+    <h3>3. Domain model — โค้ด Java ที่เทียบเท่า</h3>
+    <p>นี่คือหน้าตาของโมเดลเดียวกันถ้าเขียนด้วย OptaPlanner จริง (ตามรูปแบบตัวอย่าง Vehicle Routing ของ OptaPlanner ที่ใช้ chained variable)</p>
+<pre>// ตัวเชื่อมของ chain: ทั้ง Agent และ Task ต่อกันเป็นโซ่ได้
+public interface Standstill {
+    @InverseRelationShadowVariable(sourceVariableName = "previousStandstill")
+    Task getNextTask();            // shadow variable: งานถัดไปในโซ่
+    void setNextTask(Task next);
+}
+
+// Problem fact + "anchor" ของโซ่ = หุ่นยนต์ 1 ตัว
+public class Agent implements Standstill {
+    int capacity;   double speed;   boolean heavy;
+}
+
+@PlanningEntity                     // = งาน: สิ่งที่ solver ต้องตัดสินใจ
+public class Task implements Standstill {
+    int weight;  boolean heavy;  int priority;  double deadline;
+
+    @PlanningVariable(valueRangeProviderRefs = {"agentRange", "taskRange"},
+                      graphType = PlanningVariableGraphType.CHAINED)
+    Standstill previousStandstill;  // "ต่อจากใคร" (เอเจนต์ หรือ งานก่อนหน้า)
+
+    @AnchorShadowVariable(sourceVariableName = "previousStandstill")
+    Agent agent;                    // shadow variable: อยู่โซ่ของเอเจนต์ไหน
+
+    @PlanningPin boolean pinned;    // = ฟีเจอร์ล็อกงาน
+}
+
+@PlanningSolution
+public class DispatchSolution {
+    @ProblemFactCollectionProperty @ValueRangeProvider(id = "agentRange")
+    List&lt;Agent&gt; agents;
+    @PlanningEntityCollectionProperty @ValueRangeProvider(id = "taskRange")
+    List&lt;Task&gt; tasks;
+    @PlanningScore HardSoftScore score;
+}</pre>
+    <p class="cap">ตัวอย่างเพื่ออธิบายแนวคิด ไม่ได้ถูก compile หรือรันในเกมนี้ (ชื่อ annotation อาจต่างเล็กน้อยตามเวอร์ชัน OptaPlanner / Timefold)</p>
+
+    <h3>4. Constraints — เทียบ Constraint Streams กับโค้ดที่รันจริง</h3>
+    <div class="two">
+      <div>
+        <b>Java: ConstraintProvider (เทียบเท่า)</b>
+<pre>public class DispatchConstraints implements ConstraintProvider {
+  public Constraint[] defineConstraints(ConstraintFactory f) {
+    return new Constraint[]{ capacity(f), skill(f),
+                             distance(f), lateness(f), makespan(f) };
+  }
+  // HARD: บรรทุกเกินความจุ
+  Constraint capacity(ConstraintFactory f) {
+    return f.forEach(Task.class)
+      .groupBy(Task::getAgent, sum(Task::getWeight))
+      .filter((a, load) -&gt; load &gt; a.getCapacity())
+      .penalize(HardSoftScore.ONE_HARD,
+                (a, load) -&gt; load - a.getCapacity())
+      .asConstraint("Agent capacity");
+  }
+  // HARD: งานหนักต้องใช้เอเจนต์สายหนัก (โทษ 5/งาน)
+  Constraint skill(ConstraintFactory f) {
+    return f.forEach(Task.class)
+      .filter(t -&gt; t.isHeavy() &amp;&amp; !t.getAgent().isHeavy())
+      .penalize(HardSoftScore.ofHard(5))
+      .asConstraint("Heavy task needs heavy agent");
+  }
+  // SOFT: ระยะทางรวม
+  Constraint distance(ConstraintFactory f) {
+    return f.forEach(Task.class)
+      .penalize(HardSoftScore.ONE_SOFT, Task::distanceFromPrevious)
+      .asConstraint("Total distance");
+  }
+  // SOFT: ส่งช้า ถ่วงน้ำหนักด้วย priority (×40)
+  Constraint lateness(ConstraintFactory f) {
+    return f.forEach(Task.class)
+      .filter(t -&gt; t.lateSeconds() &gt; 0)
+      .penalize(HardSoftScore.ONE_SOFT,
+        t -&gt; (int) Math.round(40 * t.getPriority() * t.lateSeconds()))
+      .asConstraint("Late delivery");
+  }
+  // SOFT: งานสุดท้ายเสร็จเร็ว (×120) ใช้ max เวลากลับถึงฐาน
+  Constraint makespan(ConstraintFactory f) { /* groupBy(max(...)) */ }
+}</pre>
+        <div class="cap">เวลาถึง (arrival time) ใน Java จริงต้องคำนวณด้วย shadow variable / VariableListener</div>
+      </div>
+      <div>
+        <b>JavaScript: โค้ดที่กำลังรันอยู่จริง — <code class="i">Solver.evaluate()</code></b>
+        <pre id="liveEval" style="max-height:640px"></pre>
+        <div class="cap">ดึงจากฟังก์ชันจริงด้วย <code class="i">Solver.prototype.evaluate.toString()</code> ค่า <code class="i">5</code>, <code class="i">10</code>, <code class="i">120</code>, <code class="i">40</code> คือน้ำหนัก (weight) ของ constraint แต่ละตัว ตรงกับตาราง Score Analysis</div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:12px"><b>ข้อแตกต่างสำคัญ:</b> OptaPlanner จริงใช้ <u>incremental score calculation</u> (คำนวณเฉพาะส่วนที่ move กระทบ) ทำให้เร็วมากเป็นล้านครั้งต่อวินาที ส่วนเกมนี้คำนวณคะแนนใหม่ทั้งแผนทุก move ซึ่งง่ายต่อการอ่านแต่ช้ากว่า เหมาะกับปัญหาขนาดเล็ก</div>
+
+    <h3>5. Solver configuration — เทียบกับตัวเลือกในหน้าจอ</h3>
+<pre>&lt;solver&gt;
+  &lt;solutionClass&gt;DispatchSolution&lt;/solutionClass&gt;
+  &lt;entityClass&gt;Task&lt;/entityClass&gt;
+  &lt;scoreDirectorFactory&gt;
+    &lt;constraintProviderClass&gt;DispatchConstraints&lt;/constraintProviderClass&gt;
+  &lt;/scoreDirectorFactory&gt;
+
+  &lt;termination&gt;&lt;secondsSpentLimit&gt;5&lt;/secondsSpentLimit&gt;&lt;/termination&gt;   &lt;!-- แถบเลื่อนเวลาคำนวณ --&gt;
+
+  &lt;constructionHeuristic&gt;                                                  &lt;!-- ปุ่ม ↺ เริ่มใหม่ --&gt;
+    &lt;constructionHeuristicType&gt;FIRST_FIT_DECREASING&lt;/constructionHeuristicType&gt;
+  &lt;/constructionHeuristic&gt;
+
+  &lt;localSearch&gt;                                                            &lt;!-- ปุ่ม ▶ Solve --&gt;
+    &lt;unionMoveSelector&gt;
+      &lt;changeMoveSelector/&gt; &lt;swapMoveSelector/&gt;
+      &lt;subChainChangeMoveSelector/&gt; &lt;tailChainSwapMoveSelector/&gt;
+    &lt;/unionMoveSelector&gt;
+    &lt;acceptor&gt; ... &lt;/acceptor&gt;      &lt;!-- ขึ้นกับ dropdown อัลกอริทึม (ตารางล่าง) --&gt;
+    &lt;forager&gt;&lt;acceptedCountLimit&gt;1&lt;/acceptedCountLimit&gt;&lt;/forager&gt;
+  &lt;/localSearch&gt;
+&lt;/solver&gt;</pre>
+    <div class="tw"><table>
+      <thead><tr><th>ตัวเลือกในเกม</th><th>Acceptor ใน OptaPlanner</th><th>วิธีตัดสินในโค้ดเกม</th></tr></thead>
+      <tbody>
+        <tr><td>Simulated Annealing</td><td><code>simulatedAnnealingStartingTemperature</code></td><td>รับ move ที่แย่ลงด้วยความน่าจะเป็น <code>exp(−Δ/T)</code> โดย T ลดจาก 400 → 2 ตามเวลา</td></tr>
+        <tr><td>Late Acceptance</td><td><code>lateAcceptanceSize</code></td><td>รับถ้าไม่แย่กว่าคะแนนของ 80 step ก่อนหน้า</td></tr>
+        <tr><td>Hill Climbing</td><td><code>HILL_CLIMBING</code></td><td>รับเฉพาะ move ที่ไม่แย่ลง (ติด local optimum ง่าย)</td></tr>
+      </tbody></table></div>
+
+    <h3>6. Move — การ “ขยับ” แผนทีละนิด</h3>
+    <div class="tw"><table>
+      <thead><tr><th>Move ในเกม</th><th>ทำอะไร</th><th>ใกล้เคียงกับใน OptaPlanner</th></tr></thead>
+      <tbody>
+        <tr><td>change</td><td>ย้ายงาน 1–3 ชิ้นติดกันไปแทรกที่อื่น (อาจเป็นเอเจนต์อื่น)</td><td><code>ChangeMove</code> / <code>SubChainChangeMove</code></td></tr>
+        <tr><td>swap</td><td>สลับตำแหน่งงานสองชิ้น</td><td><code>SwapMove</code></td></tr>
+        <tr><td>2opt</td><td>กลับลำดับช่วงหนึ่งของเส้นทาง เพื่อลดการเดินไขว้</td><td><code>SubChainReversingChangeMove</code> / <code>TailChainSwapMove</code></td></tr>
+        <tr><td>tail</td><td>สลับ “ส่วนท้าย” ของสองเส้นทาง</td><td><code>TailChainSwapMove</code> (2-opt*)</td></tr>
+      </tbody></table></div>
+    <p class="cap">ตาราง “Solver Trace” ในแท็บ OptaPlanner นับว่าแต่ละ move ถูกลองกี่ครั้ง รับกี่ครั้ง และสร้าง best score ใหม่กี่ครั้ง จึงเห็นได้ว่า move ชนิดใดมีประโยชน์ ส่วน move ที่ผิดกฎล็อกงานจะถูกทิ้งก่อนคำนวณคะแนน</p>
+
+    <h3>7. โค้ดจริงของ Construction Heuristic และ Move Selector</h3>
+    <div class="two">
+      <div><b><code class="i">Solver.construct()</code></b><pre id="liveCH" style="max-height:420px"></pre></div>
+      <div><b><code class="i">Solver._neighbour()</code></b><pre id="liveMV" style="max-height:420px"></pre></div>
+    </div>
+
+    <h3>8. สิ่งที่เกมนี้ไม่มี (เทียบกับ OptaPlanner จริง)</h3>
+    <ul>
+      <li>ไม่มี incremental score calculation และไม่มี Constraint Streams / Drools — constraint เขียนตรง ๆ ในฟังก์ชันเดียว</li>
+      <li>ไม่มี shadow variable / VariableListener — เวลาถึงคำนวณใหม่ทุกครั้งจากลำดับงาน</li>
+      <li>เลือก move แบบสุ่ม ไม่มี move filter, tabu search, multithreaded solving หรือ benchmarker</li>
+      <li>ไม่มี Phase config แบบ XML — ค่าต่าง ๆ ฝังในโค้ด (ตารางหัวข้อ 5 แสดงว่าถ้าเขียนใน OptaPlanner จะเป็นอย่างไร)</li>
+    </ul>
+
+    <h3>9. วิธีสาธิตให้เห็น OptaPlanner ทีละขั้น</h3>
+    <ol>
+      <li>แท็บ <b>OptaPlanner</b> กด <b>↺ เริ่มใหม่</b> → เห็นแผนแรกจาก Construction Heuristic (score ยังไม่ดี มักมี hard &lt; 0) และ phase แรกขึ้นสถานะ “เสร็จ”</li>
+      <li>กด <b>▶ Solve</b> → ดู phase Local Search, ตาราง move และ log พุ่งตามคะแนนที่ดีขึ้น กราฟด้านล่างแสดงเส้นความคืบหน้า</li>
+      <li>เปรียบเทียบ <b>Hill Climbing</b> กับ <b>Simulated Annealing</b> บนด่านเดียวกัน (กด ↺ เริ่มใหม่ ก่อนทุกครั้ง)</li>
+      <li>ลอง <b>ล็อกงาน</b> ให้เอเจนต์ใดเอเจนต์หนึ่ง แล้ว Solve ใหม่ → solver จะไม่ย้ายงานนั้น (<code class="i">@PlanningPin</code>)</li>
+      <li>ไปแท็บ <b>RVO Simulation</b> กด “เริ่มภารกิจ” เพื่อดูแผนถูกนำไปเดินจริง</li>
+    </ol>
+
+    <h3>10. อ้างอิง</h3>
+    <ul>
+      <li>OptaPlanner User Guide (optaplanner.org) — หัวข้อ Vehicle Routing, Chained Variable, Constraint Streams, Local Search</li>
+      <li>Timefold Solver (timefold.ai) — ผู้สืบทอดโครงการ OptaPlanner</li>
+    </ul>
+  </section>
+
+  <!-- ============ DOCS ============ -->
+  <section id="docs" class="card">
+    <h2>📚 RVO Library Documentation</h2>
+    <p>ไลบรารี <code class="i">RVO.Simulator</code> ที่เกมนี้ใช้จริง เป็นการ implement ใหม่ด้วย JavaScript ของวิธี <b>Reciprocal Velocity Obstacles</b> (van den Berg, Lin &amp; Manocha, 2008) แบบ sampling โดยตั้งชื่อ API ให้คล้าย RVO2 Library (C++) ตัวต้นฉบับ แต่<b>ไม่ใช่ RVO2 ตัวจริง</b> และไม่ได้ใช้ ORCA / linear programming</p>
+
+    <h3>1. แนวคิด</h3>
+    <p>เอเจนต์แต่ละตัวมี <i>preferred velocity</i> (ความเร็วที่อยากไปถึงเป้าหมาย) ไลบรารีจะเลือก <i>velocity ใหม่</i> ที่ใกล้ preferred มากที่สุดและไม่ชนใน <code class="i">timeHorizon</code> วินาที โดยสมมติว่า<b>เพื่อนบ้านจะหลบด้วยครึ่งหนึ่ง</b> (reciprocal) ทำให้เอเจนต์หลายตัวหลบกันได้โดยไม่ต้องสื่อสารและไม่แกว่งซ้ายขวา</p>
+    <ol>
+      <li>หาเพื่อนบ้านใกล้สุดไม่เกิน <code class="i">maxNeighbors</code> ตัว ภายในรัศมี <code class="i">neighborDist</code></li>
+      <li>สุ่มตัวอย่าง velocity: preferred, หยุดนิ่ง, มุมรอบ preferred และวงแหวนรอบตัว</li>
+      <li>แต่ละ velocity v′ คำนวณเวลาชนกับเพื่อนบ้านด้วย <code class="i">v_rel = 2·v′ − vA − vB</code> (จุด apex ของ RVO) และเวลาชนสิ่งกีดขวางสี่เหลี่ยม</li>
+      <li>Penalty = <code class="i">|v′ − v_pref| + avoidanceWeight / timeToCollision</code></li>
+      <li>เลือก v′ ที่ penalty ต่ำสุด แล้วจำกัดการเร่งด้วย <code class="i">maxAccel</code></li>
+    </ol>
+
+    <h3>2. Quick start</h3>
+<pre>const sim = new RVO.Simulator();
+sim.setTimeStep(1 / 30);
+// neighborDist, maxNeighbors, timeHorizon, timeHorizonObst, radius, maxSpeed
+sim.setAgentDefaults(70, 8, 2.5, 1.2, 9, 60);
+sim.setBounds(960, 620);
+
+sim.addObstacle(110, 110, 150, 40);        // x, y, width, height (สี่เหลี่ยมแนวแกน)
+
+const a = sim.addAgent(120, 580);           // คืนค่า id
+const b = sim.addAgent(300, 580);
+
+for (let i = 0; i &lt; 600; i++) {
+  sim.setAgentPrefVelocity(a, 0, -60);      // อยากไปทางขึ้น 60 px/s
+  sim.setAgentPrefVelocity(b, -40, -40);
+  sim.doStep();
+}
+console.log(sim.getAgentPosition(a));       // { x, y }</pre>
+
+    <h3>3. API Reference — <code class="i">RVO.Simulator</code></h3>
+    <div class="tw"><table><thead><tr><th>เมธอด</th><th>คำอธิบาย</th></tr></thead><tbody id="apiBody"></tbody></table></div>
+
+    <h3>4. พารามิเตอร์ของเอเจนต์</h3>
+    <div class="tw"><table><thead><tr><th>พารามิเตอร์</th><th>ค่าเริ่มต้น</th><th>ผลเมื่อปรับ</th></tr></thead><tbody id="paramBody"></tbody></table></div>
+
+    <h3>5. คำแนะนำการจูน</h3>
+    <ul>
+      <li><b>ทางแคบ / คนแน่น:</b> เพิ่ม <code class="i">timeHorizon</code> ให้เอเจนต์เริ่มหลบเร็วขึ้น แต่มากเกินไปจะเลี้ยวมนและช้าลง</li>
+      <li><b>เอเจนต์สั่น / แกว่ง:</b> ลด <code class="i">maxAccel</code> หรือเพิ่ม <code class="i">timeHorizon</code></li>
+      <li><b>ชนมุมชั้นวาง:</b> เพิ่ม <code class="i">timeHorizonObst</code> และให้ path planner เว้นระยะจากสิ่งกีดขวางมากกว่า radius</li>
+      <li><b>เป้าหมายถูกเพื่อนบ้านที่หยุดนิ่งขวาง:</b> ไลบรารีจะให้เอเจนต์รับผิดชอบการหลบทั้งหมดเมื่อเพื่อนบ้านไม่มี preferred velocity</li>
+    </ul>
+
+    <h3>6. ข้อจำกัด</h3>
+    <div class="note">เป็น local avoidance แบบ sampling จึง<b>ไม่รับประกัน</b>การไม่ชนเหมือน ORCA และอาจติด deadlock ในที่แคบมาก ๆ ต้องมี global path planner คู่กัน (เกมนี้ใช้ distance field จาก Dijkstra บนกริด) สิ่งกีดขวางรองรับเฉพาะสี่เหลี่ยมแนวแกน</div>
+
+    <h3>7. Playground — สลับตำแหน่งบนวงกลม</h3>
+    <p>ทุกตัวต้องเดินไปยังจุดตรงข้ามของวงกลม ซึ่งเป็นฉากทดสอบมาตรฐานของ RVO ลองปิด RVO ดู</p>
+    <div class="pgwrap">
+      <canvas id="pg" width="420" height="420"></canvas>
+      <div style="min-width:240px;flex:1">
+        <div class="row"><label style="width:92px">จำนวนเอเจนต์</label><input type="range" id="pgN" min="4" max="32" value="14" class="grow"><b id="pgNV" style="width:30px;text-align:right">14</b></div>
+        <div class="row"><label><input type="checkbox" id="pgRvo" checked> เปิด RVO</label></div>
+        <div class="row"><button id="pgRestart" class="primary">↺ เริ่มใหม่</button></div>
+        <div class="hint" id="pgInfo"></div>
+<pre style="font-size:11.5px">// โค้ดของ playground
+sim.setAgentDefaults(70, 10, 2.5, 1.2, 7, 48);
+for (let i = 0; i &lt; n; i++) {
+  const ang = i / n * 2 * Math.PI;
+  sim.addAgent(210 + 170 * Math.cos(ang),
+               210 + 170 * Math.sin(ang));
+}
+// ทุกเฟรม: pref = ทิศไปยังจุดตรงข้าม
+sim.setAgentPrefVelocity(id, vx, vy);
+sim.doStep();</pre>
+      </div>
+    </div>
+
+    <h3>8. อ้างอิง</h3>
+    <ul>
+      <li>J. van den Berg, M. Lin, D. Manocha — <i>Reciprocal Velocity Obstacles for Real-Time Multi-Agent Navigation</i>, ICRA 2008</li>
+      <li>J. van den Berg, S. Guy, M. Lin, D. Manocha — <i>Reciprocal n-body Collision Avoidance</i> (ORCA / RVO2), 2011</li>
+      <li>OptaPlanner (Timefold) — constraint solver แบบ open source สำหรับ Java ที่เกมนี้ใช้เป็นแรงบันดาลใจ</li>
+    </ul>
+  </section>
+</main>
+
+<div class="modal" id="modal" hidden>
+  <div class="mbox">
+    <h2 id="mTitle">ภารกิจสำเร็จ</h2>
+    <div class="stars" id="mStars">★★★</div>
+    <div class="grid" id="mGrid"></div>
+    <div class="btns">
+      <button class="primary" id="mNext">ด่านถัดไป ▶</button>
+      <button id="mRetry">เล่นซ้ำ</button>
+      <button id="mPlan">กลับไปวางแผน</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+ *  SWARM DISPATCH — core (no DOM)
+ *  1) RVO   : Reciprocal Velocity Obstacles (sampling based, van den Berg 2008)
+ *  2) Level : warehouse map, grid distance fields, task / agent generation
+ *  3) Solver: OptaPlanner-style constraint solver (hard/soft score, SA / LA / HC)
+ *  4) Mission: runs the plan in the RVO simulation and keeps score
+ * ===================================================================== */
+
+const CELL = 10, W = 960, H = 620, GW = W / CELL, GH = H / CELL, SERVICE = 1.5;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ---------------------------------------------------------------------
+ *  RVO library
+ * ------------------------------------------------------------------- */
+const RVO = (() => {
+  const EPS = 1e-9;
+
+  /** time until a point moving with relative velocity (vx,vy) hits a circle of radius R at offset (px,py) */
+  function circleTTC(px, py, vx, vy, R) {
+    const c = px * px + py * py - R * R;
+    const b = vx * px + vy * py;
+    if (c < 0) return b > 0 ? 0 : Infinity;      // already overlapping: only "closing" velocities are bad
+    const a = vx * vx + vy * vy;
+    if (a < EPS) return Infinity;
+    const disc = b * b - a * c;
+    if (disc < 0 || b <= 0) return Infinity;
+    return (b - Math.sqrt(disc)) / a;
+  }
+
+  /** time until a ray from (x,y) with velocity (vx,vy) enters the rectangle [minx,maxx]x[miny,maxy] */
+  function rayRectTTC(x, y, vx, vy, minx, miny, maxx, maxy) {
+    if (x > minx && x < maxx && y > miny && y < maxy) {      // inside: block only velocities that go deeper
+      const dl = x - minx, dr = maxx - x, dt = y - miny, db = maxy - y;
+      const m = Math.min(dl, dr, dt, db);
+      let nx = 0, ny = 0;
+      if (m === dl) nx = -1; else if (m === dr) nx = 1; else if (m === dt) ny = -1; else ny = 1;
+      return (vx * nx + vy * ny) < 0 ? 0 : Infinity;
+    }
+    let t0 = 0, t1 = Infinity;
+    if (Math.abs(vx) < EPS) { if (x <= minx || x >= maxx) return Infinity; }
+    else {
+      let a = (minx - x) / vx, b = (maxx - x) / vx;
+      if (a > b) { const t = a; a = b; b = t; }
+      t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+    }
+    if (Math.abs(vy) < EPS) { if (y <= miny || y >= maxy) return Infinity; }
+    else {
+      let a = (miny - y) / vy, b = (maxy - y) / vy;
+      if (a > b) { const t = a; a = b; b = t; }
+      t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+    }
+    return t0 <= t1 ? t0 : Infinity;
+  }
+
+  class Simulator {
+    constructor() {
+      this.timeStep = 1 / 30;
+      this.time = 0;
+      this.agents = [];
+      this.obstacles = [];
+      this.rvoEnabled = true;
+      this.bounds = null;
+      this.ringAngles = 24;
+      this.defaults = {
+        neighborDist: 70, maxNeighbors: 8, timeHorizon: 2.5, timeHorizonObst: 1.2,
+        radius: 9, maxSpeed: 60, maxAccel: 180, avoidanceWeight: 30,
+      };
+    }
+    setTimeStep(dt) { this.timeStep = dt; }
+    setBounds(w, h) { this.bounds = { w, h }; }
+    setRvoEnabled(on) { this.rvoEnabled = !!on; }
+    setAgentDefaults(neighborDist, maxNeighbors, timeHorizon, timeHorizonObst, radius, maxSpeed, maxAccel) {
+      const d = this.defaults;
+      d.neighborDist = neighborDist; d.maxNeighbors = maxNeighbors; d.timeHorizon = timeHorizon;
+      d.timeHorizonObst = timeHorizonObst; d.radius = radius; d.maxSpeed = maxSpeed;
+      if (maxAccel !== undefined) d.maxAccel = maxAccel;
+    }
+    addAgent(x, y, opts) {
+      const a = Object.assign({
+        id: this.agents.length, x, y, vx: 0, vy: 0, prefX: 0, prefY: 0, active: true,
+        _nvx: 0, _nvy: 0, nNeighbors: 0,
+      }, this.defaults, opts || {});
+      this.agents.push(a);
+      return a.id;
+    }
+    removeAgent(id) { this.agents[id].active = false; }
+    addObstacle(x, y, w, h) { this.obstacles.push({ x, y, w, h }); return this.obstacles.length - 1; }
+    setAgentPrefVelocity(id, vx, vy) { const a = this.agents[id]; a.prefX = vx; a.prefY = vy; }
+    setAgentPosition(id, x, y) { const a = this.agents[id]; a.x = x; a.y = y; }
+    setAgentVelocity(id, vx, vy) { const a = this.agents[id]; a.vx = vx; a.vy = vy; }
+    setAgentMaxSpeed(id, v) { this.agents[id].maxSpeed = v; }
+    setAgentNeighborDist(id, v) { this.agents[id].neighborDist = v; }
+    setAgentTimeHorizon(id, v) { this.agents[id].timeHorizon = v; }
+    getAgentPosition(id) { const a = this.agents[id]; return { x: a.x, y: a.y }; }
+    getAgentVelocity(id) { const a = this.agents[id]; return { x: a.vx, y: a.vy }; }
+    getAgentRadius(id) { return this.agents[id].radius; }
+    getAgentNumNeighbors(id) { return this.agents[id].nNeighbors; }
+    getNumAgents() { return this.agents.filter(a => a.active).length; }
+    getGlobalTime() { return this.time; }
+
+    _neighbors(a) {
+      const out = [], r2 = a.neighborDist * a.neighborDist;
+      for (const b of this.agents) {
+        if (b === a || !b.active) continue;
+        const dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy;
+        if (d2 < r2) out.push({ b, d2 });
+      }
+      out.sort((p, q) => p.d2 - q.d2);
+      return out.slice(0, a.maxNeighbors).map(o => o.b);
+    }
+
+    _nearObstacles(a) {
+      const reach = a.maxSpeed * a.timeHorizonObst + a.radius + 4, list = [];
+      for (const o of this.obstacles) {
+        const cx = clamp(a.x, o.x, o.x + o.w), cy = clamp(a.y, o.y, o.y + o.h);
+        if ((cx - a.x) ** 2 + (cy - a.y) ** 2 < reach * reach) list.push(o);
+      }
+      return list;
+    }
+
+    _penalty(a, vx, vy, nbrs, obs) {
+      let pen = Math.hypot(vx - a.prefX, vy - a.prefY);
+      let tc = Infinity;
+      for (const b of nbrs) {
+        const px = b.x - a.x, py = b.y - a.y;
+        const resting = Math.abs(b.prefX) + Math.abs(b.prefY) < 1e-3 && Math.hypot(b.vx, b.vy) < 5;
+        // reciprocal: relative velocity uses the apex (va+vb)/2; a resting neighbour will not help, so take full responsibility
+        const rx = resting ? vx - b.vx : 2 * vx - a.vx - b.vx;
+        const ry = resting ? vy - b.vy : 2 * vy - a.vy - b.vy;
+        const t = circleTTC(px, py, rx, ry, a.radius + b.radius);
+        if (t < tc) tc = t;
+      }
+      if (tc < a.timeHorizon) pen += a.avoidanceWeight / Math.max(tc, 0.02);
+      let to = Infinity;
+      const r = a.radius * 0.95;
+      for (const o of obs) {
+        const t = rayRectTTC(a.x, a.y, vx, vy, o.x - r, o.y - r, o.x + o.w + r, o.y + o.h + r);
+        if (t < to) to = t;
+      }
+      if (to < a.timeHorizonObst) pen += a.avoidanceWeight / Math.max(to, 0.02);
+      return pen;
+    }
+
+    _computeVelocity(a) {
+      const dt = this.timeStep;
+      let pl = Math.hypot(a.prefX, a.prefY);
+      let px = a.prefX, py = a.prefY;
+      if (pl > a.maxSpeed) { px *= a.maxSpeed / pl; py *= a.maxSpeed / pl; a.prefX = px; a.prefY = py; pl = a.maxSpeed; }
+      let bx = px, by = py;
+      const nbrs = this.rvoEnabled ? this._neighbors(a) : [];
+      a.nNeighbors = nbrs.length;
+      if (this.rvoEnabled) {
+        const obs = this._nearObstacles(a);
+        let best = this._penalty(a, px, py, nbrs, obs);
+        const test = (vx, vy) => {
+          const p = this._penalty(a, vx, vy, nbrs, obs);
+          if (p < best) { best = p; bx = vx; by = vy; }
+        };
+        test(0, 0);
+        const base = Math.atan2(py, px);
+        if (pl > 1e-3) {                              // fine samples around the preferred direction
+          for (const f of [1, 0.7, 0.4]) {
+            for (const deg of [10, 20, 35, 55, 80, 110, 140]) {
+              for (const s of [-1, 1]) {
+                const ang = base + s * deg * Math.PI / 180, sp = pl * f;
+                test(Math.cos(ang) * sp, Math.sin(ang) * sp);
+              }
+            }
+          }
+        }
+        const off = a.id * 0.37, n = this.ringAngles;
+        for (const f of [0.3, 0.6, 1]) {              // coarse rings over the whole velocity disc
+          for (let k = 0; k < n; k++) {
+            const ang = off + k * 2 * Math.PI / n, sp = a.maxSpeed * f;
+            test(Math.cos(ang) * sp, Math.sin(ang) * sp);
+          }
+        }
+      }
+      let dx = bx - a.vx, dy = by - a.vy;
+      const dl = Math.hypot(dx, dy), maxD = a.maxAccel * dt;
+      if (dl > maxD) { dx *= maxD / dl; dy *= maxD / dl; }
+      a._nvx = a.vx + dx; a._nvy = a.vy + dy;
+    }
+
+    _resolveObstacles(a) {
+      const r = a.radius * 0.9;
+      for (const o of this.obstacles) {
+        const minx = o.x - r, miny = o.y - r, maxx = o.x + o.w + r, maxy = o.y + o.h + r;
+        if (a.x > minx && a.x < maxx && a.y > miny && a.y < maxy) {
+          const dl = a.x - minx, dr = maxx - a.x, dt = a.y - miny, db = maxy - a.y;
+          const m = Math.min(dl, dr, dt, db);
+          if (m === dl) a.x = minx; else if (m === dr) a.x = maxx; else if (m === dt) a.y = miny; else a.y = maxy;
+        }
+      }
+      if (this.bounds) { a.x = clamp(a.x, a.radius, this.bounds.w - a.radius); a.y = clamp(a.y, a.radius, this.bounds.h - a.radius); }
+    }
+
+    doStep() {
+      const dt = this.timeStep;
+      for (const a of this.agents) if (a.active) this._computeVelocity(a);
+      for (const a of this.agents) {
+        if (!a.active) continue;
+        a.vx = a._nvx; a.vy = a._nvy;
+        a.x += a.vx * dt; a.y += a.vy * dt;
+        this._resolveObstacles(a);
+      }
+      this.time += dt;
+    }
+  }
+  return { Simulator };
+})();
+
+/* ---------------------------------------------------------------------
+ *  Distance fields (Dijkstra on the warehouse grid)
+ * ------------------------------------------------------------------- */
+class Heap {
+  constructor() { this.k = []; this.v = []; }
+  get size() { return this.k.length; }
+  push(key, val) {
+    const k = this.k, v = this.v; let i = k.length; k.push(key); v.push(val);
+    while (i > 0) { const p = (i - 1) >> 1; if (k[p] <= k[i]) break; [k[p], k[i]] = [k[i], k[p]]; [v[p], v[i]] = [v[i], v[p]]; i = p; }
+  }
+  pop() {
+    const k = this.k, v = this.v, rk = k[0], rv = v[0], lk = k.pop(), lv = v.pop();
+    if (k.length) {
+      k[0] = lk; v[0] = lv; let i = 0;
+      for (;;) {
+        let l = 2 * i + 1, r = l + 1, m = i;
+        if (l < k.length && k[l] < k[m]) m = l;
+        if (r < k.length && k[r] < k[m]) m = r;
+        if (m === i) break;
+        [k[m], k[i]] = [k[i], k[m]]; [v[m], v[i]] = [v[i], v[m]]; i = m;
+      }
+    }
+    return [rk, rv];
+  }
+}
+const NB8 = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.4142], [1, -1, 1.4142], [-1, 1, 1.4142], [-1, -1, 1.4142]];
+const cellOf = (x, y) => clamp(Math.floor(y / CELL), 0, GH - 1) * GW + clamp(Math.floor(x / CELL), 0, GW - 1);
+
+function dijkstra(blocked, src) {
+  const d = new Float64Array(GW * GH).fill(Infinity);   // Float64: float32 rounding makes the relaxation ping-pong forever
+  d[src] = 0;
+  const h = new Heap(); h.push(0, src);
+  while (h.size) {
+    const [dd, i] = h.pop();
+    if (dd > d[i]) continue;
+    const x = i % GW, y = (i / GW) | 0;
+    for (const [dx, dy, c] of NB8) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+      const j = ny * GW + nx;
+      if (blocked[j]) continue;
+      if (dx && dy && (blocked[y * GW + nx] || blocked[ny * GW + x])) continue;
+      const nd = dd + c * CELL;
+      if (nd < d[j]) { d[j] = nd; h.push(nd, j); }
+    }
+  }
+  return d;
+}
+
+/** nearest cell with finite field value (handles agents squeezed into inflated cells) */
+function usableCell(field, ci) {
+  if (isFinite(field[ci])) return ci;
+  const cx = ci % GW, cy = (ci / GW) | 0;
+  let best = -1, bv = Infinity;
+  for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+    const nx = cx + dx, ny = cy + dy;
+    if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+    const j = ny * GW + nx;
+    if (field[j] < bv) { bv = field[j]; best = j; }
+  }
+  return best;
+}
+function descend(blocked, field, ci) {
+  const x = ci % GW, y = (ci / GW) | 0;
+  let bi = -1, bv = field[ci];
+  for (const [dx, dy] of NB8) {
+    const nx = x + dx, ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+    const j = ny * GW + nx;
+    if (blocked[j]) continue;
+    if (dx && dy && (blocked[y * GW + nx] || blocked[ny * GW + x])) continue;
+    if (field[j] < bv) { bv = field[j]; bi = j; }
+  }
+  return bi;
+}
+
+/* ---------------------------------------------------------------------
+ *  Level generation
+ * ------------------------------------------------------------------- */
+function buildLevel(level, seed) {
+  const R = rng(level * 7919 + seed * 104729 + 13);
+  const A = Math.min(8, 2 + level), T = Math.min(26, 6 + 3 * level);
+  const shelves = [];
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) shelves.push({ x: 110 + c * 215, y: 110 + r * 130, w: 150, h: 40 });
+  const pillars = [{ x: 200, y: 470, w: 40, h: 40 }, { x: 480, y: 500, w: 40, h: 40 }, { x: 760, y: 460, w: 40, h: 40 }].slice(0, Math.min(3, level - 1));
+  const obstacles = shelves.concat(pillars);
+
+  const blocked = new Uint8Array(GW * GH), infl = 14;
+  for (let cy = 0; cy < GH; cy++) for (let cx = 0; cx < GW; cx++) {
+    const px = cx * CELL + CELL / 2, py = cy * CELL + CELL / 2;
+    let b = cx <= 1 || cy <= 1 || cx >= GW - 2 || cy >= GH - 2;
+    for (const o of obstacles) if (px > o.x - infl && px < o.x + o.w + infl && py > o.y - infl && py < o.y + o.h + infl) { b = true; break; }
+    blocked[cy * GW + cx] = b ? 1 : 0;
+  }
+
+  const nodes = [];                                   // 0..A-1 = home pads, A.. = tasks
+  for (let i = 0; i < A; i++) nodes.push({ x: A === 1 ? W / 2 : 130 + i * (700 / (A - 1)), y: 580 });
+  const homeField0 = dijkstra(blocked, cellOf(nodes[0].x, nodes[0].y));
+
+  const tasks = [];
+  for (let k = 0; k < T; k++) {
+    let x, y, ok = false;
+    for (let tries = 0; tries < 800 && !ok; tries++) {
+      x = 40 + R() * 880; y = 40 + R() * 500;
+      const ci = cellOf(x, y);
+      if (blocked[ci] || !isFinite(homeField0[ci])) continue;
+      ok = nodes.every(n => Math.hypot(n.x - x, n.y - y) >= 48);
+    }
+    const w = 1 + Math.floor(R() * 5);
+    const t = { id: k, x: Math.round(x), y: Math.round(y), w, heavy: w === 5, pri: 1 + Math.floor(R() * 3), deadline: 0 };
+    tasks.push(t); nodes.push({ x: t.x, y: t.y });
+  }
+
+  const cells = nodes.map(n => cellOf(n.x, n.y));
+  const fields = cells.map(c => dijkstra(blocked, c));
+  const N = nodes.length;
+  const D = [];
+  for (let i = 0; i < N; i++) { D.push(new Float32Array(N)); for (let j = 0; j < N; j++) D[i][j] = fields[j][cells[i]]; }
+
+  const totalW = tasks.reduce((s, t) => s + t.w, 0), heavyW = tasks.filter(t => t.heavy).reduce((s, t) => s + t.w, 0);
+  const heavyCount = Math.ceil(A / 3), capBase = Math.ceil(totalW * 1.4 / A);
+  const agents = [];
+  for (let i = 0; i < A; i++) {
+    const heavy = i % 3 === 0;
+    const cap = heavy ? Math.max(capBase + 2, Math.ceil(heavyW * 1.35 / heavyCount)) : capBase + (R() < 0.5 ? 0 : 1);
+    agents.push({ id: i, heavy, cap, speed: 55 + Math.floor(R() * 4) * 5 });
+  }
+  for (const t of tasks) {
+    let base = Infinity;
+    for (const a of agents) base = Math.min(base, D[a.id][A + t.id] / a.speed);
+    t.deadline = Math.round(base + 20 + R() * (35 + 12 * T / A));
+  }
+  return { level, seed, A, T, agents, tasks, shelves, pillars, obstacles, blocked, fields, cells, nodes, D };
+}
+
+function tracePath(L, from, to) {
+  const field = L.fields[to];
+  let ci = usableCell(field, L.cells[from]);
+  const pts = [{ x: L.nodes[from].x, y: L.nodes[from].y }];
+  for (let s = 0; s < 700 && ci >= 0; s++) {
+    const nx = descend(L.blocked, field, ci);
+    if (nx < 0) break;
+    ci = nx;
+    if (s % 2 === 1) pts.push({ x: (ci % GW) * CELL + CELL / 2, y: ((ci / GW) | 0) * CELL + CELL / 2 });
+  }
+  pts.push({ x: L.nodes[to].x, y: L.nodes[to].y });
+  return pts;
+}
+function computePaths(L, routes) {
+  return routes.map((r, a) => {
+    if (!r.length) return [];
+    const seq = [a, ...r.map(k => L.A + k), a], legs = [];
+    for (let i = 0; i < seq.length - 1; i++) legs.push(tracePath(L, seq[i], seq[i + 1]));
+    return legs;
+  });
+}
+
+/* ---------------------------------------------------------------------
+ *  OptaPlanner-style solver
+ *  planning entity   : Task
+ *  planning variable : which agent (vehicle) + position in its chain
+ *  score             : HardSoftScore  (hard = feasibility, soft = quality)
+ * ------------------------------------------------------------------- */
+const HARD_W = 800;
+class Solver {
+  constructor(L) {
+    this.L = L;
+    this.pinned = new Int8Array(L.T).fill(-1);
+    this.best = null; this.bestScore = null;
+    this.running = false; this.history = [];
+  }
+
+  evaluate(routes) {
+    const L = this.L, A = L.A;
+    let overflow = 0, skill = 0, assigned = 0, dist = 0, late = 0, maxT = 0, lateCount = 0;
+    const per = [];
+    for (let a = 0; a < A; a++) {
+      const r = routes[a], ag = L.agents[a];
+      if (!r.length) { per.push({ load: 0, dist: 0, time: 0 }); continue; }
+      let load = 0, t = 0, d = 0, prev = a;
+      for (const k of r) {
+        const task = L.tasks[k];
+        load += task.w;
+        if (task.heavy && !ag.heavy) skill++;
+        const leg = L.D[prev][A + k];
+        d += leg; t += leg / ag.speed;
+        const lt = Math.max(0, t - task.deadline);
+        if (lt > 0) { late += task.pri * lt; lateCount++; }
+        t += SERVICE; prev = A + k; assigned++;
+      }
+      const back = L.D[prev][a]; d += back; t += back / ag.speed;
+      overflow += Math.max(0, load - ag.cap);
+      dist += d; maxT = Math.max(maxT, t);
+      per.push({ load, dist: d, time: t });
+    }
+    const unassigned = L.T - assigned;
+    const hard = -(overflow + 5 * skill + 10 * unassigned);
+    const soft = -Math.round(dist + 120 * maxT + 40 * late);
+    return { hard, soft, val: hard * HARD_W + soft, per, parts: { overflow, skill, unassigned, dist, maxT, late, lateCount } };
+  }
+
+  _valid(routes) {
+    for (let a = 0; a < routes.length; a++) for (const k of routes[a]) { const p = this.pinned[k]; if (p >= 0 && p !== a) return false; }
+    return true;
+  }
+
+  construct() {                                      // "First Fit Decreasing" construction heuristic (deliberately naive, so the solver has room to improve)
+    const L = this.L;
+    const routes = Array.from({ length: L.A }, () => []);
+    const order = L.tasks.map(t => t.id).sort((p, q) => {
+      const tp = L.tasks[p], tq = L.tasks[q];
+      return (tq.heavy - tp.heavy) || (tq.w - tp.w) || (tp.deadline - tq.deadline);
+    });
+    const load = new Array(L.A).fill(0);
+    for (const k of order) {                         // First Fit: first agent that is skilled and has capacity, append at the end
+      const t = L.tasks[k];
+      let ba = this.pinned[k];
+      if (ba < 0) {
+        ba = L.agents.findIndex(a => (!t.heavy || a.heavy) && load[a.id] + t.w <= a.cap);
+        if (ba < 0) ba = L.agents.reduce((b, a) => (a.cap - load[a.id] > L.agents[b].cap - load[b] ? a.id : b), 0);
+      }
+      routes[ba].push(k); load[ba] += t.w;
+    }
+    this._setBest(routes);
+    this.chScore = this.bestScore; this.stats = null; this.events = []; this.accepted = 0; this.iter = 0;
+    return routes;
+  }
+  _setBest(routes) { this.best = routes.map(r => r.slice()); this.bestScore = this.evaluate(this.best); }
+  _fmt(sc) { return sc.hard + 'hard/' + sc.soft + 'soft'; }
+
+  begin(algo, limitMs) {
+    if (!this.best) this.construct();
+    this.algo = algo; this.limit = limitMs; this.iter = 0; this.elapsed = 0;
+    this.cur = this.best.map(r => r.slice());
+    this.curE = -this.evaluate(this.cur).val;
+    this.bestE = -this.bestScore.val;
+    this.laLen = 80; this.laHist = new Array(this.laLen).fill(this.curE);
+    this.stats = {}; for (const m of ['change', 'swap', '2opt', 'tail']) this.stats[m] = { tried: 0, invalid: 0, acc: 0, best: 0 };
+    this.events = []; this.accepted = 0;
+    this.history = [{ t: 0, v: this.bestScore.val }];
+    this._last = performance.now(); this._lastHist = 0;
+    this.running = true;
+  }
+  stop() { this.running = false; }
+
+  _where(routes, k) { for (let a = 0; a < routes.length; a++) { const i = routes[a].indexOf(k); if (i >= 0) return [a, i]; } return [-1, -1]; }
+  _randTask() { return Math.floor(Math.random() * this.L.T); }
+
+  _neighbour(routes) {
+    const L = this.L, c = routes.map(r => r.slice());
+    const mv = Math.random();
+    this._mt = mv < 0.40 ? 'change' : mv < 0.70 ? 'swap' : mv < 0.90 ? '2opt' : 'tail';
+    if (mv < 0.40) {                                         // change / segment move
+      const k = this._randTask(); const [a, i] = this._where(c, k);
+      const len = Math.min(c[a].length - i, 1 + Math.floor(Math.random() * 3));
+      const seg = c[a].splice(i, len);
+      let b = this.pinned[seg[0]] >= 0 ? this.pinned[seg[0]] : Math.floor(Math.random() * L.A);
+      if (seg.some(s => this.pinned[s] >= 0 && this.pinned[s] !== b)) return null;
+      const j = Math.floor(Math.random() * (c[b].length + 1));
+      c[b].splice(j, 0, ...seg);
+    } else if (mv < 0.70) {                                  // swap
+      const k1 = this._randTask(), k2 = this._randTask();
+      if (k1 === k2) return null;
+      const [a1, i1] = this._where(c, k1), [a2, i2] = this._where(c, k2);
+      c[a1][i1] = k2; c[a2][i2] = k1;
+    } else if (mv < 0.90) {                                  // 2-opt (reverse a sub-chain)
+      const a = Math.floor(Math.random() * L.A);
+      if (c[a].length < 2) return null;
+      let i = Math.floor(Math.random() * c[a].length), j = Math.floor(Math.random() * c[a].length);
+      if (i === j) return null; if (i > j) [i, j] = [j, i];
+      const seg = c[a].slice(i, j + 1).reverse();
+      c[a].splice(i, j - i + 1, ...seg);
+    } else {                                                 // tail swap between two routes
+      const a = Math.floor(Math.random() * L.A), b = Math.floor(Math.random() * L.A);
+      if (a === b) return null;
+      const i = Math.floor(Math.random() * (c[a].length + 1)), j = Math.floor(Math.random() * (c[b].length + 1));
+      const ta = c[a].splice(i), tb = c[b].splice(j);
+      c[a].push(...tb); c[b].push(...ta);
+    }
+    return this._valid(c) ? c : null;
+  }
+
+  run(budgetMs) {
+    if (!this.running) return false;
+    const t0 = performance.now();
+    while (this.running && performance.now() - t0 < budgetMs) {
+      for (let n = 0; n < 64; n++) {
+        const prog = Math.min(1, this.elapsed / this.limit);
+        const cand = this._neighbour(this.cur);
+        this.iter++;
+        const st = this.stats[this._mt]; st.tried++;
+        if (!cand) { st.invalid++; continue; }
+        const ce = -this.evaluate(cand).val;
+        let accept = false;
+        if (this.algo === 'sa') {
+          const T = 400 * Math.pow(2 / 400, prog);
+          accept = ce <= this.curE || Math.random() < Math.exp((this.curE - ce) / T);
+        } else if (this.algo === 'la') {
+          accept = ce <= this.curE || ce <= this.laHist[this.iter % this.laLen];
+        } else accept = ce <= this.curE;
+        if (accept) {
+          st.acc++; this.accepted++;
+          this.cur = cand; this.curE = ce;
+          if (this.algo === 'la') this.laHist[this.iter % this.laLen] = ce;
+          if (ce < this.bestE) {
+            this.bestE = ce; this._setBest(cand); st.best++;
+            this.events.push({ step: this.iter, t: Math.round(this.elapsed + performance.now() - t0), mt: this._mt, score: this._fmt(this.bestScore), acc: this.accepted });
+            if (this.events.length > 60) this.events.shift();
+          }
+        }
+      }
+    }
+    this.elapsed += performance.now() - t0;
+    if (this.elapsed - this._lastHist > 120) { this.history.push({ t: this.elapsed, v: -this.bestE }); this._lastHist = this.elapsed; }
+    if (this.elapsed >= this.limit) { this.running = false; this.history.push({ t: this.elapsed, v: -this.bestE }); }
+    return this.running;
+  }
+
+  /** manual pin: force task k onto agent a (a = -1 releases) */
+  pin(k, a) {
+    this.pinned[k] = a;
+    if (a >= 0 && this.best) {
+      const routes = this.best.map(r => r.slice());
+      const [wa, wi] = this._where(routes, k);
+      if (wa !== a) { if (wa >= 0) routes[wa].splice(wi, 1); routes[a].push(k); this._setBest(routes); }
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------
+ *  Mission: execute the plan with the RVO simulation
+ * ------------------------------------------------------------------- */
+class Mission {
+  constructor(L, routes, params) {
+    this.L = L; this.params = Object.assign({ rvo: true, neighborDist: 70, timeHorizon: 2.5, timeHorizonObst: 1.2, speedScale: 1 }, params);
+    const sim = this.sim = new RVO.Simulator();
+    sim.setBounds(W, H);
+    sim.setAgentDefaults(this.params.neighborDist, 8, this.params.timeHorizon, this.params.timeHorizonObst, 9, 60);
+    for (const o of L.obstacles) sim.addObstacle(o.x, o.y, o.w, o.h);
+    this.log = []; this.collisions = 0; this.overlaps = new Set();
+    this.delivered = []; this.rejected = []; this.finished = false; this.result = null; this.score = 0;
+    this.status = L.tasks.map(() => ({ state: 'pending' }));
+    this.ag = L.agents.map(a => {
+      const route = routes[a.id], queue = [];
+      let load = 0;
+      for (const k of route) {
+        const t = L.tasks[k];
+        if (t.heavy && !a.heavy) { this._reject(k, 'ทักษะไม่พอ (งานหนัก)', a.id); continue; }
+        if (load + t.w > a.cap) { this._reject(k, 'เกินความจุ', a.id); continue; }
+        load += t.w; queue.push(k);
+      }
+      const id = sim.addAgent(L.nodes[a.id].x, L.nodes[a.id].y, { maxSpeed: a.speed * this.params.speedScale });
+      return { i: a.id, rid: id, queue, qi: 0, phase: queue.length ? 'go' : 'idle', svc: 0, trail: [], doneAt: null, dist: 0 };
+    });
+    L.tasks.forEach(t => { if (!routes.some(r => r.includes(t.id))) this._reject(t.id, 'ไม่ได้ถูกมอบหมาย', -1); });
+    this.say('เริ่มภารกิจ — ' + L.A + ' เอเจนต์, ' + L.T + ' งาน');
+  }
+  _reject(k, why, a) {
+    this.status[k] = { state: 'rejected', why };
+    this.rejected.push(k); this.score -= 100;
+    this.say('✖ งาน #' + (k + 1) + ' ถูกข้าม: ' + why);
+  }
+  say(msg) { this.log.push({ t: this.sim ? this.sim.time : 0, msg }); if (this.log.length > 40) this.log.shift(); }
+
+  _aim(g, fieldIdx, x, y, tx, ty) {
+    const L = this.L, field = L.fields[fieldIdx];
+    let ci = usableCell(field, cellOf(x, y));
+    if (ci < 0 || field[ci] < 28) return [tx, ty];
+    for (let s = 0; s < 4; s++) { const nx = descend(L.blocked, field, ci); if (nx < 0) break; ci = nx; }
+    return [(ci % GW) * CELL + CELL / 2, ((ci / GW) | 0) * CELL + CELL / 2];
+  }
+
+  step() {
+    if (this.finished) return;
+    const L = this.L, sim = this.sim, P = this.params, dt = sim.timeStep;
+    sim.setRvoEnabled(P.rvo);
+    for (const g of this.ag) {
+      const a = sim.agents[g.rid], spec = L.agents[g.i];
+      a.neighborDist = P.neighborDist; a.timeHorizon = P.timeHorizon; a.timeHorizonObst = P.timeHorizonObst;
+      a.maxSpeed = spec.speed * P.speedScale;
+      let tx = L.nodes[g.i].x, ty = L.nodes[g.i].y, node = g.i, moving = false;
+      if (g.phase === 'go') { const k = g.queue[g.qi]; node = L.A + k; tx = L.nodes[node].x; ty = L.nodes[node].y; moving = true; }
+      else if (g.phase === 'return') moving = true;
+      if (moving) {
+        const dist = Math.hypot(tx - a.x, ty - a.y);
+        const [ax, ay] = this._aim(g, node, a.x, a.y, tx, ty);
+        let dx = ax - a.x, dy = ay - a.y; const dl = Math.hypot(dx, dy) || 1;
+        let sp = a.maxSpeed; if (dist < 40) sp = Math.min(sp, Math.max(14, dist * 2));
+        sim.setAgentPrefVelocity(g.rid, dx / dl * sp, dy / dl * sp);
+      } else sim.setAgentPrefVelocity(g.rid, 0, 0);
+    }
+    sim.doStep();
+    const now = sim.time;
+    for (const g of this.ag) {
+      const a = sim.agents[g.rid];
+      g.dist += Math.hypot(a.vx, a.vy) * dt;
+      if (Math.floor(now * 10) % 3 === 0) { g.trail.push([a.x, a.y]); if (g.trail.length > 70) g.trail.shift(); }
+      if (g.phase === 'go') {
+        const k = g.queue[g.qi], t = L.tasks[k];
+        if (Math.hypot(t.x - a.x, t.y - a.y) < 12) { g.phase = 'service'; g.svc = 0; }
+      } else if (g.phase === 'service') {
+        g.svc += dt;
+        if (g.svc >= SERVICE) {
+          const k = g.queue[g.qi], t = L.tasks[k], late = Math.max(0, now - SERVICE - t.deadline);
+          this.status[k] = { state: 'done', t: now, late };
+          this.delivered.push(k);
+          let pts = 100 * t.pri;
+          if (late <= 0) pts += 50; else pts -= Math.min(80, Math.round(late * 4));
+          this.score += pts;
+          this.say((late > 0 ? '⚠ ' : '✔ ') + 'A' + (g.i + 1) + ' ส่งงาน #' + (k + 1) + (late > 0 ? ' ช้า ' + late.toFixed(1) + ' วินาที' : ' ตรงเวลา') + ' (' + (pts >= 0 ? '+' : '') + pts + ')');
+          g.qi++; g.phase = g.qi < g.queue.length ? 'go' : 'return';
+        }
+      } else if (g.phase === 'return') {
+        if (Math.hypot(L.nodes[g.i].x - a.x, L.nodes[g.i].y - a.y) < 10) { g.phase = 'done'; g.doneAt = now; this.say('A' + (g.i + 1) + ' กลับถึงฐานแล้ว'); }
+      }
+    }
+    // agent–agent collisions (new contacts only)
+    const A = sim.agents;
+    for (let i = 0; i < A.length; i++) for (let j = i + 1; j < A.length; j++) {
+      const key = i * 100 + j, d = Math.hypot(A[i].x - A[j].x, A[i].y - A[j].y), hit = d < (A[i].radius + A[j].radius) * 0.9;
+      if (hit && !this.overlaps.has(key)) { this.overlaps.add(key); this.collisions++; this.score -= 30; this.say('💥 A' + (i + 1) + ' ชน A' + (j + 1) + ' (−30)'); }
+      else if (!hit && this.overlaps.has(key) && d > (A[i].radius + A[j].radius) * 1.1) this.overlaps.delete(key);
+    }
+    if (this.ag.every(g => g.phase === 'done' || g.phase === 'idle') || now > 1500) this._finish();
+  }
+
+  _finish() {
+    this.finished = true;
+    const T = this.L.T;
+    const late = this.status.filter(s => s.state === 'done' && s.late > 0).length;
+    const missed = this.rejected.length, coll = this.collisions;
+    let stars = 0;
+    if (missed === 0 && late === 0 && coll <= 2) stars = 3;
+    else if (missed === 0 && late <= Math.ceil(T * 0.25) && coll <= 8) stars = 2;
+    else if (missed <= Math.ceil(T * 0.2)) stars = 1;
+    this.result = { stars, late, missed, collisions: coll, time: this.sim.time, score: this.score, delivered: this.delivered.length };
+    this.say('ภารกิจสิ้นสุด — ' + '★'.repeat(stars) + '☆'.repeat(3 - stars));
+  }
+}
+
+if (typeof module !== 'undefined') module.exports = { RVO, buildLevel, Solver, Mission, computePaths, W, H, CELL, GW, GH, SERVICE };
+
+</script>
+<script>
+'use strict';
+/* =====================================================================
+ *  SWARM DISPATCH — UI / rendering / docs playground
+ * ===================================================================== */
+const $ = id => document.getElementById(id);
+const COLORS = ['#38bdf8', '#f472b6', '#a3e635', '#fb923c', '#c084fc', '#2dd4bf', '#facc15', '#f87171'];
+const PRI_COLORS = ['#94a3b8', '#fbbf24', '#fb7185'];
+
+const S = {
+  level: 1, seed: 0, L: null, solver: null, paths: [], mission: null, running: false,
+  speed: 1, acc: 0, tab: 'plan', lastPathAt: 0, shown: false, logLen: -1,
+  params: { rvo: true, neighborDist: 70, timeHorizon: 2.5, timeHorizonObst: 1.2, speedScale: 1 },
+  debug: false,
+};
+const cv = $('cv'), ctx = cv.getContext('2d');
+const dpr = Math.min(2, window.devicePixelRatio || 1);
+cv.width = W * dpr; cv.height = H * dpr;
+
+/* ---------- storage (best scores) ---------- */
+function loadBest() { try { return JSON.parse(localStorage.getItem('swarm.best') || '{}'); } catch (e) { return {}; } }
+function saveBest(level, score) { try { const b = loadBest(); if (!(b[level] >= score)) { b[level] = score; localStorage.setItem('swarm.best', JSON.stringify(b)); } } catch (e) { /* storage blocked */ } }
+
+/* ---------- level handling ---------- */
+function loadLevel() {
+  if (S.solver) S.solver.stop();
+  S.L = buildLevel(S.level, S.seed);
+  S.solver = new Solver(S.L);
+  S.solver.construct();
+  S.mission = null; S.running = false; S.shown = false; S.acc = 0;
+  $('hudLevel').textContent = S.level; $('hudAgents').textContent = S.L.A; $('hudTasks').textContent = S.L.T;
+  $('lvlLbl').textContent = 'ด่าน ' + S.level;
+  const b = loadBest()[S.level]; $('hudBest').textContent = b === undefined ? '–' : b;
+  buildTaskTable(); refreshPlan(); resetSimUI();
+}
+function planChanged() {              // any edit to the plan invalidates a running mission
+  S.mission = null; S.running = false; S.shown = false; resetSimUI();
+}
+
+/* ---------- planner UI ---------- */
+function fmtScore(sc) { return sc.hard + 'hard/' + sc.soft + 'soft'; }
+function refreshPlan(full = true) {
+  const sv = S.solver, sc = sv.bestScore, L = S.L;
+  const box = $('scoreBox'); box.textContent = fmtScore(sc); box.className = 'score ' + (sc.hard < 0 ? 'bad' : 'good');
+  S.paths = computePaths(L, sv.best); S.lastPathAt = performance.now();
+  const p = sc.parts;
+  $('analysis').innerHTML = [
+    ['h', 'ความจุเกิน', p.overflow, -p.overflow],
+    ['h', 'ขาดทักษะ (งานหนัก)', p.skill, -5 * p.skill],
+    ['h', 'งานยังไม่มีผู้รับ', p.unassigned, -10 * p.unassigned],
+    ['s', 'ระยะทางรวม (px)', Math.round(p.dist), -Math.round(p.dist)],
+    ['s', 'เวลาที่งานสุดท้ายเสร็จ (s)', p.maxT.toFixed(1), -Math.round(120 * p.maxT)],
+    ['s', 'ส่งช้า (ถ่วงด้วยความสำคัญ)', p.lateCount + ' งาน', -Math.round(40 * p.late)],
+  ].map(r => `<tr><td><span class="tag ${r[0]}">${r[0] === 'h' ? 'hard' : 'soft'}</span> ${r[1]}</td><td class="n">${r[2]}</td><td class="n ${r[3] < 0 && r[0] === 'h' ? 'over' : ''}">${r[3]}</td></tr>`).join('');
+  $('routes').innerHTML = L.agents.map((a, i) => {
+    const pr = sc.per[i], over = pr.load > a.cap;
+    return `<div class="agentchip"><span class="dot" style="background:${COLORS[i]}"></span><span class="t"><b>A${i + 1}</b>${a.heavy ? ' 💪' : ''} · โหลด <b class="${over ? 'over' : ''}">${pr.load}/${a.cap}</b> · ${pr.dist ? Math.round(pr.dist) + ' px · ' + pr.time.toFixed(0) + ' s' : 'ว่าง'} · ${sv.best[i].map(k => '#' + (k + 1)).join(' → ') || '–'}</span></div>`;
+  }).join('');
+  if (full) syncTaskSelects();
+  drawChart(); refreshTrace();
+}
+const MOVE_NAMES = { change: 'ChangeMove / SubChainChange', swap: 'SwapMove', '2opt': 'SubChainReversing (2-opt)', tail: 'TailChainSwap' };
+const ACCEPTOR_INFO = {
+  sa: 'Acceptor: Simulated Annealing — อุณหภูมิเริ่ม 0hard/400soft ลดลงตามเวลา (รับ move ที่แย่ลงได้บางครั้ง)',
+  la: 'Acceptor: Late Acceptance — รับถ้าไม่แย่กว่าคะแนนเมื่อ 80 step ก่อน',
+  hc: 'Acceptor: Hill Climbing — รับเฉพาะ move ที่ไม่แย่ลง'
+};
+function refreshTrace() {
+  const sv = S.solver; if (!sv || !$('phases')) return;
+  const ls = sv.stats ? (sv.running ? 'run' : 'done') : 'idle';
+  const lsTxt = { run: 'กำลังทำงาน…', done: 'เสร็จ', idle: 'ยังไม่เริ่ม' }[ls];
+  $('phases').innerHTML =
+    `<span class="pill done">① Construction Heuristic (First Fit Decreasing) ✔ ${sv.chScore ? sv._fmt(sv.chScore) : ''}</span>` +
+    `<span class="pill ${ls}">② Local Search · ${lsTxt}</span>`;
+  $('acceptorInfo').textContent = sv.stats ? (ACCEPTOR_INFO[sv.algo] || '') : 'เลือกอัลกอริทึม แล้วกด Solve เพื่อเริ่ม Local Search';
+  $('moveStats').innerHTML = Object.keys(MOVE_NAMES).map(m => {
+    const st = sv.stats && sv.stats[m] || { tried: 0, acc: 0, best: 0 };
+    return `<tr><td>${MOVE_NAMES[m]}</td><td class="n">${st.tried}</td><td class="n">${st.acc}</td><td class="n">${st.best}</td></tr>`;
+  }).join('');
+  const lg = $('traceLog');
+  if (sv.events && sv.events.length) {
+    lg.textContent = sv.events.slice(-14).map(e => `Local Search step (${e.step}), time spent (${e.t}ms), best score (${e.score}), move (${e.mt}), accepted moves (${e.acc})`).join('\n');
+    lg.scrollTop = lg.scrollHeight;
+  } else lg.textContent = sv.stats ? 'ยังไม่พบ best score ใหม่…' : 'กด Solve เพื่อดู log';
+}
+function buildTaskTable() {
+  const L = S.L;
+  $('taskBody').innerHTML = L.tasks.map(t => `<tr><td>#${t.id + 1}</td><td>${t.heavy ? '⬡' : ''} w${t.w}</td><td><span style="color:${PRI_COLORS[t.pri - 1]}">●</span>${t.pri}</td><td class="n">${t.deadline}s</td><td><select data-k="${t.id}"><option value="-1">อัตโนมัติ</option>${L.agents.map(a => `<option value="${a.id}">A${a.id + 1}${a.heavy ? ' 💪' : ''}</option>`).join('')}</select></td></tr>`).join('');
+  $('taskBody').querySelectorAll('select').forEach(sel => sel.onchange = () => {
+    S.solver.stop(); setSolving(false);
+    S.solver.pin(+sel.dataset.k, +sel.value); planChanged(); refreshPlan(false);
+  });
+}
+function syncTaskSelects() {
+  $('taskBody').querySelectorAll('select').forEach(sel => { sel.value = String(S.solver.pinned[+sel.dataset.k]); });
+}
+function setSolving(on) {
+  $('btnSolve').disabled = on; $('btnStop').disabled = !on; $('btnConstruct').disabled = on;
+  $('algo').disabled = on; $('limit').disabled = on;
+  if (!on) $('solveBar').style.width = '0';
+}
+function drawChart() {
+  const c = $('chart'), g = c.getContext('2d'), w = c.width, h = c.height, hist = S.solver.history;
+  g.clearRect(0, 0, w, h);
+  if (!hist || hist.length < 2) { g.fillStyle = '#5b6aa8'; g.font = '12px sans-serif'; g.fillText('กด Solve เพื่อดูความคืบหน้า', 10, h / 2 + 4); return; }
+  let lo = Infinity, hi = -Infinity; for (const p of hist) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); }
+  if (hi - lo < 1) { hi += 1; lo -= 1; }
+  const tmax = Math.max(hist[hist.length - 1].t, 1);
+  g.strokeStyle = '#6ee7ff'; g.lineWidth = 2; g.beginPath();
+  hist.forEach((p, i) => { const x = 8 + (p.t / tmax) * (w - 16), y = h - 8 - ((p.v - lo) / (hi - lo)) * (h - 16); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  g.stroke();
+  g.fillStyle = '#93a0d6'; g.font = '10px monospace'; g.fillText(Math.round(hi), 8, 12); g.fillText(Math.round(lo), 8, h - 3);
+}
+
+$('btnSolve').onclick = () => {
+  planChanged();
+  S.solver.begin($('algo').value, +$('limit').value * 1000);
+  setSolving(true);
+};
+$('btnStop').onclick = () => { S.solver.stop(); solverDone(); };
+$('btnConstruct').onclick = () => { S.solver.best = null; S.solver.history = []; S.solver.construct(); planChanged(); refreshPlan(); $('solveStatus').textContent = 'สร้างแผนใหม่ด้วย Construction Heuristic แล้ว'; };
+$('limit').oninput = e => { $('limitV').textContent = e.target.value + 's'; };
+$('lvlPrev').onclick = () => { if (S.level > 1) { S.level--; S.seed = 0; loadLevel(); } };
+$('lvlNext').onclick = () => { if (S.level < 8) { S.level++; S.seed = 0; loadLevel(); } };
+$('btnReseed').onclick = () => { S.seed++; loadLevel(); };
+
+function solverTick() {
+  const sv = S.solver, now = performance.now();
+  const box = $('scoreBox'), sc = sv.bestScore;
+  box.textContent = fmtScore(sc); box.className = 'score ' + (sc.hard < 0 ? 'bad' : 'good');
+  $('solveBar').style.width = Math.min(100, sv.elapsed / sv.limit * 100) + '%';
+  $('solveStatus').textContent = `กำลังคำนวณ… ${(sv.elapsed / 1000).toFixed(1)}/${(sv.limit / 1000).toFixed(0)}s · ${(sv.iter / 1000).toFixed(0)}k iterations`;
+  if (now - S.lastPathAt > 160) { refreshPlan(false); }
+}
+function solverDone() {
+  setSolving(false); refreshPlan(true);
+  const sv = S.solver;
+  $('solveStatus').textContent = `เสร็จ — ${fmtScore(sv.bestScore)} · ${(sv.iter / 1000).toFixed(0)}k iterations` + (sv.bestScore.hard < 0 ? ' ⚠ ยังละเมิด hard constraint' : ' ✔ แผนใช้งานได้');
+}
+
+/* ---------- simulation UI ---------- */
+function resetSimUI() {
+  $('btnPlay').textContent = '▶ เริ่มภารกิจ';
+  ['stTime', 'stScore', 'stLate', 'stColl', 'stMiss'].forEach(i => $(i).textContent = i === 'stTime' ? '0.0' : '0');
+  $('stDone').textContent = '0/' + S.L.T; $('log').innerHTML = ''; S.logLen = -1; renderSimAgents(null);
+}
+function startMission() {
+  S.mission = new Mission(S.L, S.solver.best.map(r => r.slice()), S.params);
+  S.shown = false; S.acc = 0; S.logLen = -1;
+}
+$('btnPlay').onclick = () => {
+  if (S.solver.running) return;
+  if (!S.mission || S.mission.finished) startMission();
+  S.running = !S.running;
+  $('btnPlay').textContent = S.running ? '⏸ พัก' : '▶ เล่นต่อ';
+};
+$('btnSimReset').onclick = () => { S.mission = null; S.running = false; S.shown = false; resetSimUI(); };
+$('speedSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+  S.speed = +b.dataset.s; $('speedSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+});
+function bindParam(id, vId, key, scale) {
+  $(id).oninput = e => { const v = +e.target.value / scale; S.params[key] = v; $(vId).textContent = scale === 1 ? v : v.toFixed(1); if (S.mission) S.mission.params[key] = v; };
+}
+bindParam('pND', 'vND', 'neighborDist', 1); bindParam('pTH', 'vTH', 'timeHorizon', 10);
+bindParam('pTO', 'vTO', 'timeHorizonObst', 10); bindParam('pSP', 'vSP', 'speedScale', 100);
+$('rvoOn').onchange = e => { S.params.rvo = e.target.checked; if (S.mission) S.mission.params.rvo = e.target.checked; };
+$('dbg').onchange = e => { S.debug = e.target.checked; };
+
+function updateSimHud() {
+  const m = S.mission; if (!m) return;
+  const late = m.status.filter(s => s.state === 'done' && s.late > 0).length;
+  $('stTime').textContent = m.sim.time.toFixed(1); $('stDone').textContent = m.delivered.length + '/' + S.L.T;
+  $('stScore').textContent = m.score; $('stLate').textContent = late; $('stColl').textContent = m.collisions; $('stMiss').textContent = m.rejected.length;
+  if (m.log.length !== S.logLen || m.finished) {
+    S.logLen = m.log.length;
+    const el = $('log'); el.innerHTML = m.log.slice().reverse().map(l => `<div class="${/^✔/.test(l.msg) ? 'ok' : /^(⚠)/.test(l.msg) ? 'warn' : /^(💥|✖)/.test(l.msg) ? 'bad' : ''}">[${l.t.toFixed(1)}s] ${l.msg}</div>`).join('');
+  }
+}
+function showResult() {
+  const m = S.mission, r = m.result; if (!r || S.shown) return; S.shown = true;
+  saveBest(S.level, r.score);
+  const b = loadBest()[S.level]; $('hudBest').textContent = b === undefined ? '–' : b;
+  $('mTitle').textContent = r.stars >= 1 ? (r.stars === 3 ? 'ยอดเยี่ยม!' : 'ภารกิจสำเร็จ') : 'ภารกิจล้มเหลว';
+  $('mStars').textContent = '★'.repeat(r.stars) + '☆'.repeat(3 - r.stars);
+  $('mGrid').innerHTML = [['คะแนน', r.score], ['เวลา', r.time.toFixed(1) + ' s'], ['ส่งสำเร็จ', r.delivered + '/' + S.L.T], ['ส่งช้า', r.late], ['งานที่พลาด', r.missed], ['ชนกัน', r.collisions]]
+    .map(x => `<div>${x[0]}<b>${x[1]}</b></div>`).join('');
+  $('mNext').disabled = r.stars < 1 || S.level >= 8;
+  $('modal').hidden = false;
+}
+$('mNext').onclick = () => { $('modal').hidden = true; S.level++; S.seed = 0; loadLevel(); setTab('plan'); };
+$('mRetry').onclick = () => { $('modal').hidden = true; S.mission = null; S.running = false; resetSimUI(); startMission(); S.running = true; $('btnPlay').textContent = '⏸ พัก'; };
+$('mPlan').onclick = () => { $('modal').hidden = true; setTab('plan'); };
+
+/* ---------- tabs ---------- */
+function setTab(t) {
+  S.tab = t; document.body.dataset.tab = t;
+  $('tabs').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  if (t === 'docs') pgInit();
+  if (t === 'optadocs') fillLiveCode();
+}
+function fillLiveCode() {
+  if ($('liveEval').dataset.done) return; $('liveEval').dataset.done = 1;
+  $('liveEval').textContent = '// Solver.evaluate(routes)\n' + Solver.prototype.evaluate.toString();
+  $('liveCH').textContent = '// Solver.construct()\n' + Solver.prototype.construct.toString();
+  $('liveMV').textContent = '// Solver._neighbour(routes)\n' + Solver.prototype._neighbour.toString();
+}
+$('goOpta').onclick = () => setTab('optadocs');
+$('tabs').querySelectorAll('button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
+window.addEventListener('keydown', e => { if (e.code === 'Space' && S.tab === 'sim' && !/INPUT|SELECT|BUTTON/.test(document.activeElement.tagName)) { e.preventDefault(); $('btnPlay').click(); } });
+
+/* ---------- rendering ---------- */
+function rrect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+/* ---------- visual effects layer (animation only; game logic untouched) ---------- */
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const FX = { parts: [], texts: [], rings: [], shake: 0 };
+const hx = (c, a) => { const n = parseInt(c.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')'; };
+function fxBurst(x, y, color, n, spd, life, grav) {
+  if (RM) n = Math.min(n, 4);
+  for (let i = 0; i < n && FX.parts.length < 500; i++) {
+    const ang = Math.random() * 6.283, v = spd * (0.4 + Math.random() * 0.8);
+    FX.parts.push({ x, y, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v, g: grav || 0, life: life * (0.6 + Math.random() * 0.6), max: life, c: color, s: 2 + Math.random() * 2.5, dia: Math.random() < 0.4 });
+  }
+}
+const fxText = (x, y, txt, c) => FX.texts.push({ x, y, txt, c, life: 1.4, max: 1.4 });
+const fxRing = (x, y, c, r) => FX.rings.push({ x, y, c, r, life: 0.7, max: 0.7 });
+function fxConfetti(stars) {
+  if (RM) return;
+  const cols = ['#fbbf24', '#38bdf8', '#f472b6', '#a3e635', '#c084fc'];
+  for (let i = 0; i < 40 + stars * 30 && FX.parts.length < 500; i++)
+    FX.parts.push({ x: Math.random() * W, y: -10, vx: (Math.random() - .5) * 120, vy: 40 + Math.random() * 120, g: 150, life: 2.8, max: 2.8, c: cols[i % 5], s: 3 + Math.random() * 3, dia: i % 3 === 0 });
+}
+function fxUpdate(dt) {
+  FX.shake = Math.max(0, FX.shake - dt * 30);
+  for (const p of FX.parts) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.g * dt; if (!p.g) { p.vx *= 1 - dt * 1.6; p.vy *= 1 - dt * 1.6; } }
+  FX.parts = FX.parts.filter(p => p.life > 0);
+  for (const t of FX.texts) { t.life -= dt; t.y -= 22 * dt; }
+  FX.texts = FX.texts.filter(t => t.life > 0);
+  for (const r of FX.rings) r.life -= dt;
+  FX.rings = FX.rings.filter(r => r.life > 0);
+}
+function fxDetect(m, ph, po) {
+  const L = m.L;
+  m.ag.forEach((g, i) => {
+    const col = COLORS[g.i];
+    if (ph[i] === 'go' && g.phase === 'service') { const t = L.tasks[g.queue[g.qi]]; fxRing(t.x, t.y, col, 8); }
+    else if (ph[i] === 'service' && g.phase !== 'service') {
+      const k = g.queue[g.qi - 1], t = L.tasks[k], late = (m.status[k] && m.status[k].late) || 0;
+      const pts = 100 * t.pri + (late <= 0 ? 50 : -Math.min(80, Math.round(late * 4))), c = late > 0 ? '#fbbf24' : '#4ade80';
+      fxBurst(t.x, t.y, c, 16, 90, 0.8, 60); fxBurst(t.x, t.y, col, 8, 60, 0.6, 0);
+      fxRing(t.x, t.y, c, 10); fxText(t.x, t.y - 36, (pts >= 0 ? '+' : '') + pts, c);
+    } else if (ph[i] === 'return' && g.phase === 'done') { const n = L.nodes[g.i]; fxRing(n.x, n.y, col, 8); fxText(n.x, n.y - 28, 'กลับฐานแล้ว', col); }
+  });
+  for (const key of m.overlaps) if (!po.has(key)) {
+    const A = m.sim.agents, i = (key / 100) | 0, j = key % 100, x = (A[i].x + A[j].x) / 2, y = (A[i].y + A[j].y) / 2;
+    fxBurst(x, y, '#fb7185', 18, 140, 0.6, 0); fxRing(x, y, '#fb7185', 6); fxText(x, y - 18, 'ชน −30', '#fb7185');
+    if (!RM) FX.shake = Math.min(8, FX.shake + 5);
+  }
+  if (m.finished && m.result) fxConfetti(m.result.stars);
+}
+const _mStep = Mission.prototype.step;
+Mission.prototype.step = function () {
+  if (this.finished) return;
+  const ph = this.ag.map(g => g.phase), po = new Set(this.overlaps);
+  this.prev = this.ag.map(g => { const a = this.sim.agents[g.rid]; return [a.x, a.y]; });
+  _mStep.call(this);
+  fxDetect(this, ph, po);
+};
+const _hud = updateSimHud;
+updateSimHud = function () {
+  _hud();
+  for (const id of ['stDone', 'stScore', 'stLate', 'stColl', 'stMiss']) {
+    const el = $(id);
+    if (el._v !== el.textContent) { if (el._v !== undefined && !RM) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); } el._v = el.textContent; }
+  }
+};
+const PHASE_TXT = { go: 'กำลังไปส่ง', service: 'กำลังส่งของ', return: 'กลับฐาน', done: 'เสร็จแล้ว ✓', idle: 'ไม่มีงาน' };
+function renderSimAgents(m) {
+  const L = S.L, el = $('simAgents'); if (!el || !L) return;
+  const html = L.agents.map((a, i) => {
+    const g = m && m.ag[i], q = g ? g.queue.length : S.solver.best[i].length, d = g ? g.qi : 0;
+    const ph = g ? g.phase : 'wait', phTxt = g ? (PHASE_TXT[ph] + (ph === 'go' ? ' #' + (g.queue[g.qi] + 1) : '')) : 'พร้อม';
+    const pct = q ? Math.round(100 * Math.min(d, q) / q) : (g ? 100 : 0);
+    return `<div class="ag" style="--c:${COLORS[i]}"><span class="em">${a.heavy ? '🏗️' : '🏭'}</span><span class="nm">A${i + 1}${a.heavy ? ' 💪' : ''}<small>ความจุ ${a.cap}</small></span><span class="ph ${ph}">${phTxt}</span><div class="mini"><i style="width:${pct}%"></i></div><div class="meta">ส่งแล้ว ${Math.min(d, q)}/${q} งาน${g ? ' · เดิน ' + Math.round(g.dist) + ' px' : ''}</div></div>`;
+  }).join('');
+  if (el._h !== html) { el._h = html; el.innerHTML = html; }
+  const pc = m && S.L.T ? Math.round(100 * m.delivered.length / S.L.T) : 0;
+  $('missionBar').style.width = pc + '%'; $('missionPct').textContent = pc + '%';
+}
+const _hud2 = updateSimHud;
+updateSimHud = function () { _hud2(); renderSimAgents(S.mission); };
+// smooth the 30 Hz simulation to the display frame rate
+function ipos(m, idx, a) {
+  const al = (S.running && !m.finished) ? Math.min(1, S.acc * 30) : 1, p = m.prev && m.prev[idx];
+  return p ? [p[0] + (a.x - p[0]) * al, p[1] + (a.y - p[1]) * al] : [a.x, a.y];
+}
+function hexPath(g, x, y, r) { g.beginPath(); for (let k = 0; k < 6; k++) { const ang = k * Math.PI / 3 + Math.PI / 6; g.lineTo(x + Math.cos(ang) * r, y + Math.sin(ang) * r); } g.closePath(); }
+function pill(g, txt, x, y, color, font) {
+  g.font = font || 'bold 10px sans-serif'; const w = g.measureText(txt).width + 12;
+  rrect(g, x - w / 2, y - 8, w, 16, 8); g.fillStyle = 'rgba(8,12,34,.82)'; g.fill(); g.strokeStyle = hx(color, .6); g.lineWidth = 1; g.stroke();
+  g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, x, y + 0.5); g.textBaseline = 'alphabetic';
+}
+
+function draw() {
+  const L = S.L, m = S.mission, g = ctx, T = performance.now() / 1000, simT = m ? m.sim.time : 0;
+  const pulse = (f, a) => RM ? 0 : Math.sin(T * f) * a;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (FX.shake > 0.1 && !RM) g.translate((Math.random() - .5) * FX.shake, (Math.random() - .5) * FX.shake);
+  g.fillStyle = '#0c1330'; g.fillRect(-12, -12, W + 24, H + 24);
+  const bgG = g.createRadialGradient(W / 2, H / 2, H * 0.15, W / 2, H / 2, W * 0.75);
+  bgG.addColorStop(0, 'rgba(70,95,190,.16)'); bgG.addColorStop(1, 'rgba(0,0,0,.3)');
+  g.fillStyle = bgG; g.fillRect(0, 0, W, H);
+  g.strokeStyle = '#141d44'; g.lineWidth = 1; g.beginPath();
+  for (let x = 0; x <= W; x += 40) { g.moveTo(x, 0); g.lineTo(x, H); }
+  for (let y = 0; y <= H; y += 40) { g.moveTo(0, y); g.lineTo(W, y); }
+  g.stroke();
+  // faint docking strip behind the bases
+  if (L.A) {
+    const by = L.nodes[0].y; rrect(g, 24, by - 40, W - 48, 70, 16);
+    g.fillStyle = 'rgba(110,231,255,.035)'; g.fill(); g.strokeStyle = 'rgba(110,231,255,.14)'; g.setLineDash([6, 8]); g.lineWidth = 1; g.stroke(); g.setLineDash([]);
+  }
+  // obstacles: warehouse shelves with crates
+  const CR = ['#f59e0b', '#38bdf8', '#a78bfa', '#34d399'];
+  for (const o of L.obstacles) {
+    g.save(); g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 14; g.shadowOffsetY = 6;
+    rrect(g, o.x, o.y, o.w, o.h, 7); const og = g.createLinearGradient(0, o.y, 0, o.y + o.h); og.addColorStop(0, '#2c3d82'); og.addColorStop(1, '#16204d'); g.fillStyle = og; g.fill(); g.restore();
+    g.save(); rrect(g, o.x, o.y, o.w, o.h, 7); g.clip();
+    const rows = o.h >= 30 ? 2 : 1, rh = o.h / rows;
+    for (let r = 0; r < rows; r++) for (let cx = o.x + 5, k = 0; cx < o.x + o.w - 14; cx += 24, k++) {
+      if (((k * 5 + (o.x | 0) / 5 + r * 3) % 7) < 5) { g.fillStyle = hx(CR[(k + r + ((o.y | 0) / 10 | 0)) % 4], .5); g.fillRect(cx, o.y + r * rh + 4, 17, rh - 9); g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(cx, o.y + r * rh + 4, 17, 2); }
+    }
+    g.strokeStyle = 'rgba(150,175,255,.22)'; g.lineWidth = 1; g.beginPath();
+    for (let r = 1; r < rows; r++) { g.moveTo(o.x, o.y + r * rh); g.lineTo(o.x + o.w, o.y + r * rh); }
+    g.stroke(); g.restore();
+    rrect(g, o.x, o.y, o.w, o.h, 7); g.strokeStyle = '#4a5fb5'; g.lineWidth = 1.5; g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.moveTo(o.x + 8, o.y + 1); g.lineTo(o.x + o.w - 8, o.y + 1); g.stroke();
+  }
+  // home bases (depots) with emoji buildings
+  L.agents.forEach((a, i) => {
+    const n = L.nodes[i], c = COLORS[i], gg = m && m.ag[i], back = !!(gg && gg.phase === 'done');
+    const gl = g.createRadialGradient(n.x, n.y, 4, n.x, n.y, 50); gl.addColorStop(0, hx(back ? '#4ade80' : c, .32 + pulse(2, .08))); gl.addColorStop(1, hx(c, 0));
+    g.fillStyle = gl; g.beginPath(); g.arc(n.x, n.y - 8, 50, 0, 6.283); g.fill();
+    g.beginPath(); g.ellipse(n.x, n.y + 3, 30, 12.5, 0, 0, 6.283); g.fillStyle = 'rgba(4,8,26,.75)'; g.fill();
+    g.beginPath(); g.ellipse(n.x, n.y, 27, 11, 0, 0, 6.283);
+    const pg = g.createLinearGradient(0, n.y - 11, 0, n.y + 11); pg.addColorStop(0, hx(c, .4)); pg.addColorStop(1, hx(c, .1));
+    g.fillStyle = pg; g.fill(); g.strokeStyle = hx(back ? '#4ade80' : c, .95); g.lineWidth = 1.8; g.stroke();
+    g.beginPath(); g.ellipse(n.x, n.y, 18, 7, 0, 0, 6.283); g.strokeStyle = hx(c, .5); g.lineWidth = 1; g.setLineDash([4, 4]); g.lineDashOffset = RM ? 0 : -T * 10; g.stroke(); g.setLineDash([]); g.lineDashOffset = 0;
+    const bob = RM ? 0 : Math.sin(T * 1.6 + i) * 1.5;
+    g.save(); g.font = '26px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.shadowColor = hx(c, .9); g.shadowBlur = 14; g.fillStyle = '#fff'; g.fillText(a.heavy ? '🏗️' : '🏭', n.x, n.y - 26 + bob); g.restore();
+    g.textBaseline = 'alphabetic';
+    pill(g, 'ฐาน A' + (i + 1) + (back ? ' ✓' : ''), n.x, n.y + 26, back ? '#4ade80' : c, 'bold 10px sans-serif');
+  });
+  // planned routes (marching dashes show direction)
+  const showPlan = !m || S.tab === 'plan';
+  if (showPlan) {
+    S.paths.forEach((legs, a) => {
+      g.strokeStyle = hx(COLORS[a], .65); g.lineWidth = 2.4; g.setLineDash([7, 5]); g.lineDashOffset = RM ? 0 : -T * 16;
+      for (const leg of legs) { g.beginPath(); leg.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)); g.stroke(); }
+      g.setLineDash([]); g.lineDashOffset = 0;
+    });
+  }
+  // live guide lines: where is each agent heading?
+  if (m && S.tab === 'sim') {
+    m.ag.forEach((gg, i) => {
+      if (gg.phase !== 'go' && gg.phase !== 'return') return;
+      const a = m.sim.agents[gg.rid], [x, y] = ipos(m, i, a), tgt = gg.phase === 'go' ? L.tasks[gg.queue[gg.qi]] : L.nodes[gg.i];
+      g.strokeStyle = hx(COLORS[gg.i], .5); g.lineWidth = 1.5; g.setLineDash([3, 6]); g.lineDashOffset = RM ? 0 : -T * 24;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(tgt.x, tgt.y); g.stroke(); g.setLineDash([]); g.lineDashOffset = 0;
+    });
+  }
+  // tasks
+  const assigned = new Map();
+  S.solver.best.forEach((r, a) => r.forEach((k, i) => assigned.set(k, { a, i })));
+  const serving = new Map(); if (m) for (const gg of m.ag) if (gg.phase === 'service') serving.set(gg.queue[gg.qi], gg);
+  for (const t of L.tasks) {
+    const st = m ? m.status[t.id] : null, as = assigned.get(t.id);
+    const done = st && st.state === 'done', rej = st && st.state === 'rejected', pc = PRI_COLORS[t.pri - 1];
+    const left = m && !done && !rej ? t.deadline - simT : null, urgent = left !== null && left < 6;
+    if (!done) {
+      const hr = 23 + (t.pri === 3 || urgent ? pulse(5, 3) : 0), hc = urgent ? '#fb7185' : pc;
+      const hg = g.createRadialGradient(t.x, t.y, 6, t.x, t.y, hr); hg.addColorStop(0, hx(hc, urgent ? .38 : .2)); hg.addColorStop(1, hx(hc, 0));
+      g.fillStyle = hg; g.beginPath(); g.arc(t.x, t.y, hr, 0, 6.283); g.fill();
+    }
+    let sc = 1; if (done) { const ds = simT - st.t; if (ds < 0.5) sc = 1 + 0.45 * Math.sin(ds / 0.5 * Math.PI); }
+    g.save(); g.translate(t.x, t.y); g.scale(sc, sc); g.globalAlpha = done ? 0.5 : 1;
+    if (t.heavy) hexPath(g, 0, 0, 14); else { g.beginPath(); g.arc(0, 0, 11.5, 0, 6.283); }
+    g.fillStyle = done ? '#22c55e' : '#101a45'; g.fill(); g.strokeStyle = done ? '#4ade80' : pc; g.lineWidth = 2.5; g.stroke();
+    g.fillStyle = '#fff'; g.font = 'bold 12px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(done ? '✓' : t.w, 0, 0.5);
+    g.restore(); g.textBaseline = 'alphabetic';
+    const sv = serving.get(t.id);
+    if (sv) {
+      g.lineCap = 'round'; g.lineWidth = 3.5; g.strokeStyle = 'rgba(255,255,255,.12)'; g.beginPath(); g.arc(t.x, t.y, 19, 0, 6.283); g.stroke();
+      g.strokeStyle = COLORS[sv.i]; g.beginPath(); g.arc(t.x, t.y, 19, -Math.PI / 2, -Math.PI / 2 + 6.283 * Math.min(1, sv.svc / SERVICE)); g.stroke(); g.lineCap = 'butt';
+    }
+    if (rej || (!as && !m)) { g.strokeStyle = '#fb7185'; g.setLineDash([3, 3]); g.lineWidth = 1.5; g.beginPath(); g.arc(t.x, t.y, 19, 0, 6.283); g.stroke(); g.setLineDash([]); }
+    const lab = done ? '#' + (t.id + 1) + ' เสร็จ' : '#' + (t.id + 1) + (left !== null ? ' ⏱' + Math.max(0, left).toFixed(0) + 's' : ' (' + t.deadline + 's)');
+    pill(g, lab, t.x, t.y - 28, done ? '#7f8fd0' : urgent ? '#fda4af' : '#c7d2ff', '10px sans-serif');
+    if (showPlan && as) {
+      g.beginPath(); g.arc(t.x + 14, t.y + 12, 7, 0, 6.283); g.fillStyle = COLORS[as.a]; g.fill();
+      g.fillStyle = '#0a0f22'; g.font = 'bold 9px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(as.i + 1, t.x + 14, t.y + 12.5); g.textBaseline = 'alphabetic';
+    }
+  }
+  // agents
+  const drawAgent = (i, x, y, vx, vy, extra, phase) => {
+    const a = L.agents[i], c = COLORS[i], sp = Math.hypot(vx, vy);
+    if (extra && extra.trail && extra.trail.length > 1) {
+      g.lineCap = 'round'; const tr = extra.trail, n = tr.length;
+      for (let k = 1; k < n; k++) { g.strokeStyle = hx(c, 0.5 * k / n); g.lineWidth = 1 + 3 * k / n; g.beginPath(); g.moveTo(tr[k - 1][0], tr[k - 1][1]); g.lineTo(tr[k][0], tr[k][1]); g.stroke(); }
+      g.lineCap = 'butt';
+    }
+    if (S.debug && extra) {
+      g.strokeStyle = hx(c, .27); g.lineWidth = 1; g.beginPath(); g.arc(x, y, S.params.neighborDist, 0, 6.283); g.stroke();
+      g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, y); g.lineTo(x + vx * 0.5, y + vy * 0.5); g.stroke();
+    }
+    if (!m) y += pulse(2 + i * 0.3, 1.3);
+    g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.ellipse(x, y + 8, 9, 3.5, 0, 0, 6.283); g.fill();
+    const gl = g.createRadialGradient(x, y, 4, x, y, 26); gl.addColorStop(0, hx(c, sp > 4 ? .42 : .24)); gl.addColorStop(1, hx(c, 0));
+    g.fillStyle = gl; g.beginPath(); g.arc(x, y, 26, 0, 6.283); g.fill();
+    if (sp > 4) { const ang = Math.atan2(vy, vx); g.save(); g.translate(x, y); g.rotate(ang); g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.moveTo(15, 0); g.lineTo(10, -4); g.lineTo(10, 4); g.closePath(); g.fill(); g.restore(); }
+    const bg = g.createRadialGradient(x - 3, y - 3, 1, x, y, 10); bg.addColorStop(0, '#fff'); bg.addColorStop(0.25, c); bg.addColorStop(1, c);
+    g.beginPath(); g.arc(x, y, 9, 0, 6.283); g.fillStyle = bg; g.fill();
+    g.lineWidth = a.heavy ? 3 : 1.5; g.strokeStyle = a.heavy ? '#fff' : '#0a0f22'; g.stroke();
+    g.fillStyle = '#0a0f22'; g.font = 'bold 9px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('A' + (i + 1), x, y + 0.5); g.textBaseline = 'alphabetic';
+    if (phase === 'go' || phase === 'service') {
+      g.save(); g.translate(x + 9, y - 13); g.fillStyle = '#d97706'; rrect(g, -5, -4.5, 10, 9, 2); g.fill(); g.strokeStyle = '#fde68a'; g.lineWidth = 1; g.stroke();
+      g.beginPath(); g.moveTo(0, -4.5); g.lineTo(0, 4.5); g.stroke(); g.restore();
+    }
+    const tag = phase === 'service' ? 'กำลังส่งของ' : phase === 'return' ? 'กลับฐาน' : phase === 'done' ? 'เสร็จแล้ว' : '';
+    if (tag) pill(g, tag, x, y + 24, c, 'bold 9px sans-serif');
+  };
+  if (m && S.tab === 'sim') {
+    m.ag.forEach((gg, i) => { const a = m.sim.agents[gg.rid], p = ipos(m, i, a); drawAgent(gg.i, p[0], p[1], a.vx, a.vy, { trail: gg.trail }, gg.phase); });
+  } else if (m) {
+    m.ag.forEach(gg => { const a = m.sim.agents[gg.rid]; drawAgent(gg.i, a.x, a.y, 0, 0, null, gg.phase); });
+  } else L.agents.forEach((a, i) => drawAgent(i, L.nodes[i].x, L.nodes[i].y, 0, 0, null, ''));
+  // effects
+  for (const r of FX.rings) { const k = 1 - r.life / r.max; g.strokeStyle = hx(r.c, 1 - k); g.lineWidth = 3 * (1 - k) + 1; g.beginPath(); g.arc(r.x, r.y, r.r + k * 34, 0, 6.283); g.stroke(); }
+  for (const p of FX.parts) {
+    g.globalAlpha = Math.max(0, Math.min(1, p.life / p.max * 1.4)); g.fillStyle = p.c;
+    if (p.dia) { g.save(); g.translate(p.x, p.y); g.rotate(Math.PI / 4); g.fillRect(-p.s, -p.s, p.s * 2, p.s * 2); g.restore(); }
+    else { g.beginPath(); g.arc(p.x, p.y, p.s, 0, 6.283); g.fill(); }
+  }
+  g.globalAlpha = 1;
+  g.font = 'bold 14px sans-serif'; g.textAlign = 'center'; g.lineJoin = 'round';
+  for (const t of FX.texts) {
+    g.globalAlpha = Math.min(1, t.life / t.max * 1.6); g.lineWidth = 4; g.strokeStyle = 'rgba(8,12,34,.9)'; g.strokeText(t.txt, t.x, t.y); g.fillStyle = t.c; g.fillText(t.txt, t.x, t.y);
+  }
+  g.globalAlpha = 1;
+  // on-canvas scoreboard + progress bar
+  if (m) {
+    const late = m.status.filter(s => s.state === 'done' && s.late > 0).length;
+    const chips = [['⏱', m.sim.time.toFixed(1) + ' วิ', '#6ee7ff'], ['📦', m.delivered.length + '/' + L.T, '#4ade80'], ['⭐', String(m.score), '#fbbf24']];
+    if (m.collisions) chips.push(['💥', String(m.collisions), '#fb7185']);
+    if (late) chips.push(['⏰', 'ช้า ' + late, '#fdba74']);
+    let cx = 10; g.font = 'bold 13px sans-serif';
+    for (const [ic, tx, col] of chips) {
+      const w = g.measureText(ic + ' ' + tx).width + 20;
+      rrect(g, cx, 10, w, 26, 13); g.fillStyle = 'rgba(8,12,34,.82)'; g.fill(); g.strokeStyle = hx(col, .65); g.lineWidth = 1.2; g.stroke();
+      g.fillStyle = col; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(ic + ' ' + tx, cx + 10, 23.5); cx += w + 6;
+    }
+    g.textBaseline = 'alphabetic';
+    const pg = L.T ? m.delivered.length / L.T : 0, bw = W - 20;
+    g.fillStyle = 'rgba(255,255,255,.08)'; rrect(g, 10, H - 8, bw, 4, 2); g.fill();
+    if (pg > 0) { const gr = g.createLinearGradient(10, 0, 10 + bw, 0); gr.addColorStop(0, '#6ee7ff'); gr.addColorStop(1, '#4ade80'); g.fillStyle = gr; rrect(g, 10, H - 8, Math.max(4, bw * pg), 4, 2); g.fill(); }
+  }
+  g.textBaseline = 'alphabetic';
+}
+
+/* ---------- docs content ---------- */
+const DOC_API = [
+  ['new RVO.Simulator()', 'สร้างตัวจำลอง timeStep เริ่มต้น 1/30 วินาที เปิด RVO'],
+  ['setTimeStep(dt)', 'กำหนดขนาดก้าวเวลา (วินาที) ที่ doStep() ใช้'],
+  ['setBounds(w, h)', 'จำกัดพื้นที่ [0,w]×[0,h]; เอเจนต์จะไม่ออกนอกขอบ'],
+  ['setRvoEnabled(on)', 'ปิด/เปิดการหลบหลีก; ปิดแล้ว velocity = preferred (จำกัดด้วย maxAccel)'],
+  ['setAgentDefaults(neighborDist, maxNeighbors, timeHorizon, timeHorizonObst, radius, maxSpeed, [maxAccel])', 'ค่าเริ่มต้นสำหรับเอเจนต์ที่เพิ่มหลังจากนี้'],
+  ['addAgent(x, y, [opts]) → id', 'เพิ่มเอเจนต์ที่ตำแหน่ง (x, y); opts ใช้แทนค่าเริ่มต้นรายตัว เช่น { maxSpeed: 80 }'],
+  ['removeAgent(id)', 'ปิดการใช้งานเอเจนต์ (ไม่ถูกคำนวณและไม่เป็นเพื่อนบ้านของตัวอื่น)'],
+  ['addObstacle(x, y, w, h) → id', 'เพิ่มสิ่งกีดขวางสี่เหลี่ยมแนวแกน มุมซ้ายบน (x, y)'],
+  ['setAgentPrefVelocity(id, vx, vy)', 'ความเร็วที่เอเจนต์ต้องการ (px/s) — ต้องเรียกใหม่ทุกก้าวถ้าเป้าหมายเปลี่ยน'],
+  ['setAgentPosition(id, x, y)', 'ย้ายเอเจนต์ (teleport)'],
+  ['setAgentVelocity(id, vx, vy)', 'ตั้งความเร็วปัจจุบัน'],
+  ['setAgentMaxSpeed(id, v)', 'เปลี่ยน maxSpeed รายตัว'],
+  ['setAgentNeighborDist(id, v)', 'เปลี่ยนรัศมีมองเพื่อนบ้านรายตัว'],
+  ['setAgentTimeHorizon(id, v)', 'เปลี่ยน timeHorizon รายตัว'],
+  ['getAgentPosition(id) → {x, y}', 'ตำแหน่งปัจจุบัน'],
+  ['getAgentVelocity(id) → {x, y}', 'ความเร็วปัจจุบัน (หลังคำนวณ RVO)'],
+  ['getAgentRadius(id) → number', 'รัศมีเอเจนต์'],
+  ['getAgentNumNeighbors(id) → number', 'จำนวนเพื่อนบ้านที่ใช้ในก้าวล่าสุด'],
+  ['getNumAgents() → number', 'จำนวนเอเจนต์ที่ยังทำงานอยู่'],
+  ['getGlobalTime() → number', 'เวลาจำลองสะสม (วินาที)'],
+  ['doStep()', 'เดินจำลองหนึ่งก้าว: คำนวณ velocity ใหม่ของทุกตัว, อัปเดตตำแหน่ง, ดันออกจากสิ่งกีดขวาง'],
+];
+const DOC_PARAMS = [
+  ['neighborDist', '70 px', 'รัศมีที่เอเจนต์มองเห็นเพื่อนบ้าน — มาก = หลบไกลขึ้นแต่คำนวณหนักขึ้น'],
+  ['maxNeighbors', '8', 'จำกัดจำนวนเพื่อนบ้านที่นำมาคิด (เลือกตัวใกล้สุด)'],
+  ['timeHorizon', '2.5 s', 'มองล่วงหน้ากี่วินาทีสำหรับเอเจนต์อื่น — มาก = ปลอดภัยแต่เลี้ยวกว้างและช้า'],
+  ['timeHorizonObst', '1.2 s', 'มองล่วงหน้าสำหรับสิ่งกีดขวาง'],
+  ['radius', '9 px', 'รัศมีวงกลมชนของเอเจนต์'],
+  ['maxSpeed', '60 px/s', 'ความเร็วสูงสุด — ตัวอย่าง velocity ถูกสุ่มภายในวงกลมนี้'],
+  ['maxAccel', '180 px/s²', 'ความเร่งสูงสุด ช่วยลดการสั่นและการเลี้ยวกระชาก'],
+  ['avoidanceWeight', '30', 'น้ำหนักของ 1/timeToCollision ใน penalty — มาก = ระวังชนมากกว่าเดินตรง'],
+];
+function buildDocs() {
+  $('apiBody').innerHTML = DOC_API.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+  $('paramBody').innerHTML = DOC_PARAMS.map(r => `<tr><td>${r[0]}</td><td style="font-family:var(--mono);white-space:nowrap">${r[1]}</td><td>${r[2]}</td></tr>`).join('');
+}
+
+/* ---------- docs playground: antipodal circle swap ---------- */
+const pgc = $('pg'), pgx = pgc.getContext('2d');
+const PG = { sim: null, goals: [], trails: [], t: 0, doneT: 0 };
+function pgInit() {
+  const n = +$('pgN').value, sim = new RVO.Simulator();
+  sim.setBounds(420, 420); sim.setAgentDefaults(70, 10, 2.5, 1.2, 7, 48); sim.setRvoEnabled($('pgRvo').checked);
+  PG.goals = []; PG.trails = []; PG.doneT = 0;
+  for (let i = 0; i < n; i++) {
+    const ang = i / n * 2 * Math.PI, c = Math.cos(ang), s = Math.sin(ang);
+    sim.addAgent(210 + 170 * c, 210 + 170 * s); PG.goals.push([210 - 170 * c, 210 - 170 * s]); PG.trails.push([]);
+  }
+  PG.sim = sim;
+}
+function pgFrame(dt) {
+  const sim = PG.sim; if (!sim) return;
+  sim.setRvoEnabled($('pgRvo').checked);
+  const steps = Math.max(1, Math.round(dt * 30 * 1.5));
+  let arrived = 0;
+  for (let s = 0; s < steps; s++) {
+    arrived = 0;
+    sim.agents.forEach((a, i) => {
+      const g = PG.goals[i], dx = g[0] - a.x, dy = g[1] - a.y, d = Math.hypot(dx, dy);
+      if (d < 6) { arrived++; sim.setAgentPrefVelocity(i, 0, 0); } else { const sp = Math.min(48, d * 2 + 8); sim.setAgentPrefVelocity(i, dx / d * sp, dy / d * sp); }
+    });
+    sim.doStep();
+  }
+  sim.agents.forEach((a, i) => { const tr = PG.trails[i]; tr.push([a.x, a.y]); if (tr.length > 90) tr.shift(); });
+  if (arrived === sim.agents.length) { PG.doneT += dt; if (PG.doneT > 1.5) pgInit(); } else PG.doneT = 0;
+  const g = pgx;
+  g.fillStyle = '#0c1330'; g.fillRect(0, 0, 420, 420);
+  g.strokeStyle = '#1b2656'; g.setLineDash([4, 6]); g.beginPath(); g.arc(210, 210, 170, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+  sim.agents.forEach((a, i) => {
+    const col = `hsl(${i / sim.agents.length * 360},80%,62%)`;
+    g.strokeStyle = col.replace('62%)', '62%,0.35)').replace('hsl', 'hsla'); g.lineWidth = 2; g.beginPath();
+    PG.trails[i].forEach((p, k) => k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke();
+    g.beginPath(); g.arc(a.x, a.y, a.radius, 0, Math.PI * 2); g.fillStyle = col; g.fill();
+    g.beginPath(); g.arc(PG.goals[i][0], PG.goals[i][1], 3, 0, Math.PI * 2); g.fillStyle = col; g.fill();
+  });
+  let overlaps = 0; const A = sim.agents;
+  for (let i = 0; i < A.length; i++) for (let j = i + 1; j < A.length; j++) if (Math.hypot(A[i].x - A[j].x, A[i].y - A[j].y) < (A[i].radius + A[j].radius) * 0.9) overlaps++;
+  $('pgInfo').textContent = `เวลาจำลอง ${sim.getGlobalTime().toFixed(1)} s · ถึงเป้าหมาย ${arrived}/${A.length} · คู่ที่ซ้อนทับกันตอนนี้ ${overlaps}`;
+}
+$('pgN').oninput = e => { $('pgNV').textContent = e.target.value; pgInit(); };
+$('pgRestart').onclick = pgInit;
+$('pgRvo').onchange = pgInit;
+
+/* ---------- main loop ---------- */
+let lastT = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  const sv = S.solver;
+  if (sv.running) { sv.run(10); solverTick(); if (!sv.running) solverDone(); }
+  const m = S.mission;
+  if (m && S.running && !m.finished) {
+    S.acc += dt * S.speed; let n = 0;
+    while (S.acc >= 1 / 30 && n < 40) { m.step(); S.acc -= 1 / 30; n++; if (m.finished) break; }
+    if (S.acc > 1) S.acc = 0;
+    updateSimHud();
+    if (m.finished) { S.running = false; $('btnPlay').textContent = '▶ เริ่มใหม่'; showResult(); }
+  }
+  if (S.tab === 'docs') pgFrame(dt); else { fxUpdate(dt); draw(); }
+  requestAnimationFrame(frame);
+}
+
+buildDocs();
+loadLevel();
+pgInit();
+requestAnimationFrame(frame);
+
+</script>
+</body>
+</html>
